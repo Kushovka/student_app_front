@@ -20,6 +20,7 @@ const ClassPage = () => {
 
     fetchStudents();
   }, [grade, letter]);
+  console.log("Students state:", students);
 
   return (
     <section className="p-10">

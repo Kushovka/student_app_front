@@ -3,8 +3,10 @@ import type { BehaviorCreate } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
 
 const api = axios.create({
-  baseURL: "https://overbearing-cherryl-worthwhile.ngrok-free.dev/",
+  baseURL: import.meta.env.VITE_API_URL,
 });
+
+console.log("API URL:", import.meta.env.VITE_API_URL);
 
 interface CreateStudent {
   first_name: string;
@@ -19,7 +21,7 @@ export const getStudents = async (
   grade?: number,
   class_letter?: string,
 ): Promise<StudentResponce[]> => {
-  const { data } = await api.get("student/", {
+  const { data } = await api.get("/student/", {
     params: { grade, class_letter },
   });
   console.log(data);
@@ -27,14 +29,14 @@ export const getStudents = async (
 };
 
 export const createStudents = async (payload: CreateStudent) => {
-  const { data } = await api.post("student/", payload);
+  const { data } = await api.post("/student/", payload);
   return data;
 };
 
 export const getStudentById = async (
   studentId: string,
 ): Promise<StudentResponce> => {
-  const { data } = await api.get(`student/${studentId}`);
+  const { data } = await api.get(`/student/${studentId}`);
 
   return data;
 };
