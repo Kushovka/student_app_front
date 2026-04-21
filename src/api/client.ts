@@ -3,6 +3,9 @@ import { clearAccessToken, getAccessToken } from "../utils/authToken";
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
+  headers: {
+    "ngrok-skip-browser-warning": "true",
+  },
 });
 
 api.interceptors.request.use((config) => {
