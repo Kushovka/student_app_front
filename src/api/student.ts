@@ -1,12 +1,6 @@
-import axios from "axios";
 import type { BehaviorCreate } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
-
-console.log("API URL:", import.meta.env.VITE_API_URL);
+import { api } from "./client";
 
 interface CreateStudent {
   first_name: string;

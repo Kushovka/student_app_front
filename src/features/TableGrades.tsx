@@ -2,7 +2,7 @@ import GradeCard from "../components/GradeCard";
 
 const TableGrades = () => {
   return (
-    <section className="relative min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-200">
+    <section className="min-h-[calc(100vh-4rem)]">
       <GradeCard />
     </section>
   );
