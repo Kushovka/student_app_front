@@ -16,6 +16,11 @@ export interface AuthUser {
   middle_name: string;
   email: string;
   school_id: string;
+  school?: {
+    id: string;
+    name: string;
+    city: string;
+  };
 }
 
 export interface LoginPayload {

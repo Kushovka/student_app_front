@@ -5,7 +5,13 @@ import {
   IoPersonCircleOutline,
   IoSchoolOutline,
 } from "react-icons/io5";
-import { BrowserRouter, Outlet, Route, Routes, useNavigate } from "react-router";
+import {
+  BrowserRouter,
+  Outlet,
+  Route,
+  Routes,
+  useNavigate,
+} from "react-router";
 import { getMe, type AuthUser } from "./api/auth";
 import { createStudents } from "./api/student";
 import CreateStudentModal from "./components/CreateStudentModal";
@@ -102,9 +108,17 @@ const AppLayout = () => {
               {isUserLoading ? (
                 <span className="h-3 w-24 animate-pulse rounded-full bg-zinc-200" />
               ) : (
-                <span className="hidden max-w-44 truncate text-sm font-semibold text-zinc-800 sm:block">
-                  {user?.last_name} {user?.first_name} {user?.middle_name}
-                </span>
+                <div className="hidden max-w-52 sm:block">
+                  <div className="truncate text-sm font-semibold text-zinc-800">
+                    {user?.last_name} {user?.first_name} {user?.middle_name}
+                  </div>
+
+                  {!isUserLoading && user?.school && (
+                    <div className="truncate text-xs text-zinc-500">
+                      {user.school.name}, {user.school.city}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
