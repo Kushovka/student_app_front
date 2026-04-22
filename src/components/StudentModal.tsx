@@ -14,6 +14,7 @@ import {
 } from "../api/student";
 import type { BehaviorRecord } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
+import { useAuth } from "../context/authContext";
 import Toast from "./Toast";
 
 interface Props {
@@ -66,6 +67,8 @@ const reasons = [
 ];
 
 const StudentModal = ({ studentId, onClose }: Props) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [student, setStudent] = useState<StudentResponce | null>(null);
   const [subject, setSubject] = useState("");
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
@@ -187,10 +190,12 @@ const StudentModal = ({ studentId, onClose }: Props) => {
                       {student?.middle_name}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-zinc-700">
-                    <IoMailOutline className="h-5 w-5 text-zinc-400" />
-                    <span className="break-all">{student?.email}</span>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-2 text-sm text-zinc-700">
+                      <IoMailOutline className="h-5 w-5 text-zinc-400" />
+                      <span className="break-all">{student?.email}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

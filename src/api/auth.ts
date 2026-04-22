@@ -7,6 +7,14 @@ export interface AuthUserPayload {
   email: string;
   password: string;
   school_id: string;
+  role?: "admin" | "teacher";
+}
+
+export interface SchoolInfo {
+  id: string;
+  name: string;
+  city: string;
+  created_at?: string;
 }
 
 export interface AuthUser {
@@ -16,11 +24,8 @@ export interface AuthUser {
   middle_name: string;
   email: string;
   school_id: string;
-  school?: {
-    id: string;
-    name: string;
-    city: string;
-  };
+  role?: "admin" | "teacher";
+  school?: SchoolInfo;
 }
 
 export interface LoginPayload {

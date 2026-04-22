@@ -16,6 +16,7 @@ import { getMe, type AuthUser } from "./api/auth";
 import { createStudents } from "./api/student";
 import CreateStudentModal from "./components/CreateStudentModal";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthProvider } from "./context/authContext";
 import AuthPage from "./features/AuthPage";
 import ClassPage from "./features/ClassPage";
 import GradePage from "./features/GradePage";
@@ -37,21 +38,22 @@ const AppLayout = () => {
     class_letter: "",
   });
 
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      try {
-        setIsUserLoading(true);
-        const data = await getMe();
-        setUser(data);
-      } catch {
-        clearAccessToken();
-        navigate("/login", { replace: true });
-      } finally {
-        setIsUserLoading(false);
-      }
-    };
+  const refreshMe = async () => {
+    try {
+      setIsUserLoading(true);
+      const data = await getMe();
+      setUser(data);
+    } catch {
+      clearAccessToken();
+      navigate("/login", { replace: true });
+    } finally {
+      setIsUserLoading(false);
+    }
+  };
 
-    fetchCurrentUser();
+  useEffect(() => {
+    refreshMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   const addStudent = async () => {
@@ -80,6 +82,8 @@ const AppLayout = () => {
     clearAccessToken();
     navigate("/login", { replace: true });
   };
+
+  const isAdmin = user?.role === "admin";
 
   return (
     <div className="min-h-screen bg-transparent text-zinc-950">
@@ -133,23 +137,29 @@ const AppLayout = () => {
         </div>
       </header>
 
-      <button
-        onClick={() => setOpenCreateModal((prev) => !prev)}
-        aria-label="Добавить ученика"
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-950 text-white shadow-lg shadow-zinc-900/20 transition hover:-translate-y-0.5 hover:bg-zinc-800 active:scale-95 sm:bottom-8 sm:right-8"
-      >
-        <IoAdd className="w-7 h-7" />
-      </button>
-      {openCreateModal && (
-        <CreateStudentModal
-          form={form}
-          setForm={setForm}
-          setOpenCreateModal={setOpenCreateModal}
-          addStudent={addStudent}
-        />
+      {isAdmin && (
+        <>
+          <button
+            onClick={() => setOpenCreateModal((prev) => !prev)}
+            aria-label="Добавить ученика"
+            className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-950 text-white shadow-lg shadow-zinc-900/20 transition hover:-translate-y-0.5 hover:bg-zinc-800 active:scale-95 sm:bottom-8 sm:right-8"
+          >
+            <IoAdd className="w-7 h-7" />
+          </button>
+          {openCreateModal && (
+            <CreateStudentModal
+              form={form}
+              setForm={setForm}
+              setOpenCreateModal={setOpenCreateModal}
+              addStudent={addStudent}
+            />
+          )}
+        </>
       )}
 
-      <Outlet />
+      <AuthProvider value={{ user, isUserLoading, refreshMe }}>
+        <Outlet />
+      </AuthProvider>
     </div>
   );
 };

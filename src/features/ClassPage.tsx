@@ -8,10 +8,13 @@ import { useNavigate, useParams } from "react-router";
 import { getStudents } from "../api/student";
 import type { StudentResponce } from "../types/student.type";
 import StudentModal from "../components/StudentModal";
+import { useAuth } from "../context/authContext";
 
 const ClassPage = () => {
   const { grade, letter } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [students, setStudents] = useState<StudentResponce[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -40,10 +43,17 @@ const ClassPage = () => {
   const normalizedSearch = search.trim().toLowerCase();
   const filteredStudents = students.filter((student) => {
     const fullName = `${student.last_name} ${student.first_name} ${student.middle_name}`.toLowerCase();
-    return (
-      fullName.includes(normalizedSearch) ||
-      student.email.toLowerCase().includes(normalizedSearch)
-    );
+
+    if (!normalizedSearch) return true;
+
+    if (isAdmin) {
+      return (
+        fullName.includes(normalizedSearch) ||
+        student.email.toLowerCase().includes(normalizedSearch)
+      );
+    }
+
+    return fullName.includes(normalizedSearch);
   });
 
   return (
@@ -82,7 +92,7 @@ const ClassPage = () => {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Поиск по ФИО или email"
+                placeholder={isAdmin ? "Поиск по ФИО или email" : "Поиск по ФИО"}
                 className="h-12 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-3 text-sm shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
               />
             </label>
@@ -122,7 +132,7 @@ const ClassPage = () => {
                   <tr>
                     <th className="w-16 px-5 py-4">№</th>
                     <th className="px-5 py-4">Ученик</th>
-                    <th className="px-5 py-4">Email</th>
+                    {isAdmin && <th className="px-5 py-4">Email</th>}
                     <th className="px-5 py-4">Класс</th>
                   </tr>
                 </thead>
@@ -142,9 +152,11 @@ const ClassPage = () => {
                           {student.middle_name}
                         </p>
                       </td>
-                      <td className="px-5 py-4 text-zinc-600">
-                        {student.email}
-                      </td>
+                      {isAdmin && (
+                        <td className="px-5 py-4 text-zinc-600">
+                          {student.email}
+                        </td>
+                      )}
                       <td className="px-5 py-4">
                         <span className="inline-flex rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-700">
                           {student.grade}
