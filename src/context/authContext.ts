@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { AuthUser } from "../api/auth";
+import type { AuthUser } from "../api/profile";
 
 export interface AuthContextValue {
   user: AuthUser | null;

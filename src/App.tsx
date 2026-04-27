@@ -3,6 +3,7 @@ import {
   IoAdd,
   IoLogOutOutline,
   IoPersonCircleOutline,
+  IoPeopleOutline,
   IoSchoolOutline,
 } from "react-icons/io5";
 import {
@@ -12,7 +13,7 @@ import {
   Routes,
   useNavigate,
 } from "react-router";
-import { getMe, type AuthUser } from "./api/auth";
+import { getMe, type AuthUser } from "./api/profile";
 import { createStudents } from "./api/student";
 import CreateStudentModal from "./components/CreateStudentModal";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -20,7 +21,9 @@ import { AuthProvider } from "./context/authContext";
 import AuthPage from "./features/AuthPage";
 import ClassPage from "./features/ClassPage";
 import GradePage from "./features/GradePage";
+import ProfilePage from "./features/ProfilePage";
 import TableGrades from "./features/TableGrades";
+import UsersPage from "./features/UsersPage";
 import type { StudentForm } from "./types/student.type";
 import { clearAccessToken } from "./utils/authToken";
 
@@ -107,7 +110,13 @@ const AppLayout = () => {
           </button>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 shadow-sm sm:px-3">
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              disabled={isUserLoading || !user}
+              className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70 sm:px-3"
+              title="Профиль"
+            >
               <IoPersonCircleOutline className="h-6 w-6 text-cyan-700" />
               {isUserLoading ? (
                 <span className="h-3 w-24 animate-pulse rounded-full bg-zinc-200" />
@@ -124,7 +133,17 @@ const AppLayout = () => {
                   )}
                 </div>
               )}
-            </div>
+            </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => navigate("/users")}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"
+              >
+                <IoPeopleOutline className="h-5 w-5" />
+                <span className="hidden sm:inline">Пользователи</span>
+              </button>
+            )}
 
             <button
               onClick={logout}
@@ -173,6 +192,8 @@ const App = () => {
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
             <Route path="/" element={<TableGrades />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/users" element={<UsersPage />} />
             <Route path="/grade/:grade" element={<GradePage />} />
             <Route path="/grade/:grade/:letter" element={<ClassPage />} />
           </Route>

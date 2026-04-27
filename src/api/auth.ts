@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { AuthUser } from "./profile";
 
 export interface AuthUserPayload {
   first_name: string;
@@ -8,24 +9,6 @@ export interface AuthUserPayload {
   password: string;
   school_id: string;
   role?: "admin" | "teacher";
-}
-
-export interface SchoolInfo {
-  id: string;
-  name: string;
-  city: string;
-  created_at?: string;
-}
-
-export interface AuthUser {
-  id: string;
-  first_name: string;
-  last_name: string;
-  middle_name: string;
-  email: string;
-  school_id: string;
-  role?: "admin" | "teacher";
-  school?: SchoolInfo;
 }
 
 export interface LoginPayload {
@@ -38,6 +21,13 @@ export interface LoginResponse {
   token_type: "bearer";
 }
 
+export interface UpdateMePayload {
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  email: string;
+}
+
 export const registerUser = async (payload: AuthUserPayload) => {
   const { data } = await api.post<AuthUser>("/auth/register", payload);
   return data;
@@ -45,10 +35,5 @@ export const registerUser = async (payload: AuthUserPayload) => {
 
 export const loginUser = async (payload: LoginPayload) => {
   const { data } = await api.post<LoginResponse>("/auth/login", payload);
-  return data;
-};
-
-export const getMe = async () => {
-  const { data } = await api.get<AuthUser>("/auth/me");
   return data;
 };
