@@ -24,7 +24,9 @@ const GradePage = () => {
         const data = await getStudents(Number(grade));
 
         const uniqueLetters = [
-          ...new Set(data.map((s) => s.class_letter.trim().toUpperCase())),
+          ...new Set(
+            data.items.map((s) => s.class_letter.trim().toUpperCase()),
+          ),
         ].sort();
 
         setLetters(uniqueLetters);

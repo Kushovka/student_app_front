@@ -11,14 +11,24 @@ interface CreateStudent {
   class_letter: string;
 }
 
+export interface StudentsListResponse {
+  items: StudentResponce[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export const getStudents = async (
   grade?: number,
   class_letter?: string,
-): Promise<StudentResponce[]> => {
-  const { data } = await api.get("/student/", {
-    params: { grade, class_letter },
+  search?: string,
+  page?: number,
+  limit?: number,
+): Promise<StudentsListResponse> => {
+  const { data } = await api.get<StudentsListResponse>("/student/", {
+    params: { grade, class_letter, search, page, limit },
   });
-  console.log(data);
   return data;
 };
 
