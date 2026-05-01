@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { updateMe, type UpdateMePayload } from "../api/profile";
 import { useAuth } from "../context/authContext";
 import Toast from "../components/Toast";
+import { formatRole } from "../utils/formatRole";
 
 const formatDateTime = (iso?: string) => {
   if (!iso) return "—";
@@ -175,7 +176,7 @@ const ProfilePage = () => {
                     Роль
                   </div>
                   <div className="mt-1 text-sm font-bold text-zinc-900">
-                    {user.role ?? "—"}
+                    {formatRole(user.role)}
                   </div>
                 </div>
               </div>
