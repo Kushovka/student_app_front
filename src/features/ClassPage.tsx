@@ -12,7 +12,7 @@ import { exportBehaviorReport, type ReportFormat } from "../api/reports";
 import type { StudentResponce } from "../types/student.type";
 import StudentModal from "../components/StudentModal";
 import { useAuth } from "../context/authContext";
-import Toast from "../components/Toast";
+import { toastBus } from "../utils/toastBus";
 
 const ClassPage = () => {
   const { grade, letter } = useParams();
@@ -24,8 +24,6 @@ const ClassPage = () => {
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportNotify, setExportNotify] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<ReportFormat>("xlsx");
@@ -69,8 +67,6 @@ const ClassPage = () => {
 
     try {
       setIsExporting(true);
-      setExportError(null);
-      setExportNotify(null);
 
       const payload = {
         grade: Number(grade),
@@ -94,10 +90,10 @@ const ClassPage = () => {
         );
       }
 
-      setExportNotify("Отчёт скачан");
+      toastBus.success("Отчёт скачан");
       setIsExportOpen(false);
     } catch {
-      setExportError("Не удалось выгрузить отчёт.");
+      toastBus.error("Не удалось выгрузить отчёт.");
     } finally {
       setIsExporting(false);
     }
@@ -121,20 +117,6 @@ const ClassPage = () => {
 
   return (
     <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-8">
-      {exportError && (
-        <Toast
-          type="error"
-          message={exportError}
-          onClose={() => setExportError(null)}
-        />
-      )}
-      {exportNotify && (
-        <Toast
-          type="access"
-          message={exportNotify}
-          onClose={() => setExportNotify(null)}
-        />
-      )}
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>

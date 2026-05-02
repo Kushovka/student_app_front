@@ -17,6 +17,7 @@ import { getMe, type AuthUser } from "./api/profile";
 import { createStudents } from "./api/student";
 import CreateStudentModal from "./components/CreateStudentModal";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ToastHost from "./components/ToastHost";
 import { AuthProvider } from "./context/authContext";
 import AuthPage from "./features/AuthPage";
 import ClassPage from "./features/ClassPage";
@@ -90,6 +91,7 @@ const AppLayout = () => {
 
   return (
     <div className="min-h-screen bg-transparent text-zinc-950">
+      <ToastHost />
       <header className="sticky top-0 z-40 border-b border-zinc-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <button

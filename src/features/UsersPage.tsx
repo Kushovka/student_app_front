@@ -14,8 +14,8 @@ import {
   type UserListItem,
 } from "../api/users";
 import { useAuth } from "../context/authContext";
-import Toast from "../components/Toast";
 import { formatRole } from "../utils/formatRole";
+import { toastBus } from "../utils/toastBus";
 
 const UsersPage = () => {
   const navigate = useNavigate();
@@ -24,8 +24,6 @@ const UsersPage = () => {
 
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notify, setNotify] = useState<string | null>(null);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
@@ -60,11 +58,10 @@ const UsersPage = () => {
     const fetchUsers = async () => {
       try {
         setIsLoading(true);
-        setError(null);
         const data = await getUsers();
         setUsers(data);
       } catch {
-        setError("Не удалось загрузить пользователей.");
+        toastBus.error("Не удалось загрузить пользователей.");
       } finally {
         setIsLoading(false);
       }
@@ -81,15 +78,13 @@ const UsersPage = () => {
     setIsUserModalOpen(true);
     setSelectedUserId(userId);
     setSelectedUser(null);
-    setError(null);
-    setNotify(null);
 
     try {
       setIsUserModalLoading(true);
       const data = await getUserById(userId);
       setSelectedUser(data);
     } catch {
-      setError("Не удалось загрузить пользователя.");
+      toastBus.error("Не удалось загрузить пользователя.");
       setIsUserModalOpen(false);
       setSelectedUserId(null);
     } finally {
@@ -107,20 +102,18 @@ const UsersPage = () => {
   const handleRoleChange = async (target: UserListItem, nextRole: string) => {
     if (actionUserId) return;
     if (target.id === user?.id) {
-      setError("Нельзя менять роль самому себе.");
+      toastBus.error("Нельзя менять роль самому себе.");
       return;
     }
 
     try {
       setActionUserId(target.id);
-      setError(null);
-      setNotify(null);
       const updated = await updateUserRole(target.id, nextRole);
       updateUserInList(updated);
       setSelectedUser((prev) => (prev?.id === updated.id ? updated : prev));
-      setNotify("Роль обновлена");
+      toastBus.success("Роль обновлена");
     } catch {
-      setError("Не удалось обновить роль пользователя.");
+      toastBus.error("Не удалось обновить роль пользователя.");
     } finally {
       setActionUserId(null);
     }
@@ -129,7 +122,7 @@ const UsersPage = () => {
   const handleToggleBlock = async (target: UserListItem) => {
     if (actionUserId) return;
     if (target.id === user?.id) {
-      setError("Нельзя заблокировать самого себя.");
+      toastBus.error("Нельзя заблокировать самого себя.");
       return;
     }
 
@@ -148,7 +141,7 @@ const UsersPage = () => {
   const handleDelete = (target: UserListItem) => {
     if (actionUserId) return;
     if (target.id === user?.id) {
-      setError("Нельзя удалить самого себя.");
+      toastBus.error("Нельзя удалить самого себя.");
       return;
     }
 
@@ -167,8 +160,6 @@ const UsersPage = () => {
 
     try {
       setActionUserId(target.id);
-      setError(null);
-      setNotify(null);
 
       if (confirm.action === "delete") {
         await deleteUser(target.id);
@@ -176,19 +167,21 @@ const UsersPage = () => {
         if (selectedUserId === target.id) {
           closeUserModal();
         }
-        setNotify("Пользователь удалён");
+        toastBus.success("Пользователь удалён");
       } else {
         const next = confirm.action === "block";
         const updated = await updateUserBlockStatus(target.id, next);
         updateUserInList(updated);
         setSelectedUser((prev) => (prev?.id === updated.id ? updated : prev));
-        setNotify(next ? "Пользователь заблокирован" : "Пользователь разблокирован");
+        toastBus.success(
+          next ? "Пользователь заблокирован" : "Пользователь разблокирован",
+        );
       }
     } catch {
       if (confirm.action === "delete") {
-        setError("Не удалось удалить пользователя.");
+        toastBus.error("Не удалось удалить пользователя.");
       } else {
-        setError("Не удалось обновить статус блокировки.");
+        toastBus.error("Не удалось обновить статус блокировки.");
       }
     } finally {
       setActionUserId(null);
@@ -224,17 +217,6 @@ const UsersPage = () => {
 
   return (
     <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-8">
-      {error && (
-        <Toast type="error" message={error} onClose={() => setError(null)} />
-      )}
-      {notify && (
-        <Toast
-          type="access"
-          message={notify}
-          onClose={() => setNotify(null)}
-        />
-      )}
-
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>

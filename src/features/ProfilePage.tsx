@@ -4,8 +4,8 @@ import { IoArrowBackOutline, IoPersonCircleOutline } from "react-icons/io5";
 import { useNavigate } from "react-router";
 import { updateMe, type UpdateMePayload } from "../api/profile";
 import { useAuth } from "../context/authContext";
-import Toast from "../components/Toast";
 import { formatRole } from "../utils/formatRole";
+import { toastBus } from "../utils/toastBus";
 
 const formatDateTime = (iso?: string) => {
   if (!iso) return "—";
@@ -23,8 +23,6 @@ const formatDateTime = (iso?: string) => {
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user, isUserLoading, refreshMe } = useAuth();
-  const [notify, setNotify] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<UpdateMePayload>({
@@ -52,14 +50,11 @@ const ProfilePage = () => {
   }, [isUserLoading, user?.id]);
 
   const startEditing = () => {
-    setError(null);
-    setNotify(null);
     resetFormFromUser();
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
-    setError(null);
     setIsEditing(false);
     resetFormFromUser();
   };
@@ -67,17 +62,16 @@ const ProfilePage = () => {
   const saveProfile = async () => {
     try {
       setIsSaving(true);
-      setError(null);
       await updateMe(form);
       await refreshMe();
       setIsEditing(false);
-      setNotify("Профиль обновлён");
+      toastBus.success("Профиль обновлён");
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 422) {
-        setError("Ошибка валидации. Проверьте введённые данные.");
+        toastBus.error("Ошибка валидации. Проверьте введённые данные.");
         return;
       }
-      setError("Не удалось обновить профиль.");
+      toastBus.error("Не удалось обновить профиль.");
     } finally {
       setIsSaving(false);
     }
@@ -85,8 +79,6 @@ const ProfilePage = () => {
 
   return (
     <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-8">
-      {error && <Toast type="error" message={error} onClose={() => setError(null)} />}
-      {notify && <Toast type="access" message={notify} onClose={() => setNotify(null)} />}
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>

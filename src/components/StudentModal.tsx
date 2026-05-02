@@ -15,7 +15,7 @@ import {
 import type { BehaviorRecord } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
 import { useAuth } from "../context/authContext";
-import Toast from "./Toast";
+import { toastBus } from "../utils/toastBus";
 
 interface Props {
   studentId: string;
@@ -75,8 +75,6 @@ const StudentModal = ({ studentId, onClose }: Props) => {
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<BehaviorRecord[]>([]);
-  const [notify, setNotify] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isStudentLoading, setIsStudentLoading] = useState(true);
 
   useEffect(() => {
@@ -91,7 +89,7 @@ const StudentModal = ({ studentId, onClose }: Props) => {
         setStudent(studentData);
         setHistory(historyData);
       } catch {
-        setError("Не удалось загрузить карточку ученика.");
+        toastBus.error("Не удалось загрузить карточку ученика.");
       } finally {
         setIsStudentLoading(false);
       }
@@ -114,12 +112,12 @@ const StudentModal = ({ studentId, onClose }: Props) => {
 
       const updatedHistory = await getBehaviorHistory(student.id);
       setHistory(updatedHistory);
-      setNotify("Уведомление отправлено");
+      toastBus.success("Уведомление отправлено");
       setSubject("");
       setSelectedReasons([]);
       setComment("");
     } catch {
-      setError("Ошибка отправки уведомления.");
+      toastBus.error("Ошибка отправки уведомления.");
     } finally {
       setLoading(false);
     }
@@ -130,13 +128,6 @@ const StudentModal = ({ studentId, onClose }: Props) => {
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
     >
-      {error && (
-        <Toast type="error" message={error} onClose={() => setError(null)} />
-      )}
-      {notify && (
-        <Toast type="access" message={notify} onClose={() => setNotify(null)} />
-      )}
-
       <motion.div
         onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
