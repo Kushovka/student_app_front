@@ -3,11 +3,12 @@ import {
   IoArrowBackOutline,
   IoClose,
   IoDownloadOutline,
+  IoCloudUploadOutline,
   IoPeopleOutline,
   IoSearchOutline,
 } from "react-icons/io5";
 import { useNavigate, useParams } from "react-router";
-import { getStudents } from "../api/student";
+import { exportStudents, getStudents, importStudents } from "../api/student";
 import { exportBehaviorReport, type ReportFormat } from "../api/reports";
 import type { StudentResponce } from "../types/student.type";
 import StudentModal from "../components/StudentModal";
@@ -26,29 +27,32 @@ const ClassPage = () => {
   const [error, setError] = useState("");
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isStudentExporting, setIsStudentExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<ReportFormat>("xlsx");
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
 
-  useEffect(() => {
+  const fetchStudents = async () => {
     if (!grade || !letter) return;
 
-    const fetchStudents = async () => {
-      try {
-        setIsLoading(true);
-        setError("");
-        const data = await getStudents(Number(grade), letter, undefined, 1, 30);
-        setStudents(data.items);
-      } catch {
-        setError("Не удалось загрузить учеников.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    try {
+      setIsLoading(true);
+      setError("");
+      const data = await getStudents(Number(grade), letter, undefined, 1, 100);
+      setStudents(data.items);
+    } catch {
+      setError("Не удалось загрузить учеников.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grade, letter]);
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -99,6 +103,42 @@ const ClassPage = () => {
     }
   };
 
+  const handleStudentExport = async (format: "csv" | "xlsx") => {
+    if (!grade || !letter) return;
+
+    try {
+      setIsStudentExporting(true);
+      const data = await exportStudents(Number(grade), letter, format);
+      downloadBlob(
+        data,
+        `students_${grade}${String(letter).toUpperCase()}.${format}`,
+      );
+      toastBus.success("Список учеников скачан");
+    } catch {
+      toastBus.error("Не удалось выгрузить список учеников.");
+    } finally {
+      setIsStudentExporting(false);
+    }
+  };
+
+  const handleImport = async (file: File | null) => {
+    if (!file) return;
+
+    try {
+      setIsImporting(true);
+      const result = await importStudents(file);
+      await fetchStudents();
+      toastBus.success(`Импортировано: ${result.created}`);
+      if (result.skipped > 0) {
+        toastBus.error(`Пропущено строк: ${result.skipped}`);
+      }
+    } catch {
+      toastBus.error("Не удалось импортировать учеников.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const normalizedSearch = search.trim().toLowerCase();
   const filteredStudents = students.filter((student) => {
     const fullName = `${student.last_name} ${student.first_name} ${student.middle_name}`.toLowerCase();
@@ -146,14 +186,41 @@ const ClassPage = () => {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsExportOpen(true)}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.99]"
-            >
-              <IoDownloadOutline className="h-5 w-5" />
-              Выгрузка
-            </button>
+            {isAdmin && (
+              <>
+                <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50">
+                  <IoCloudUploadOutline className="h-5 w-5" />
+                  {isImporting ? "Импорт..." : "Импорт"}
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx"
+                    className="hidden"
+                    disabled={isImporting}
+                    onChange={(event) => {
+                      handleImport(event.target.files?.[0] ?? null);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleStudentExport("xlsx")}
+                  disabled={isStudentExporting}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <IoDownloadOutline className="h-5 w-5" />
+                  Список
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExportOpen(true)}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.99]"
+                >
+                  <IoDownloadOutline className="h-5 w-5" />
+                  Замечания
+                </button>
+              </>
+            )}
 
             <label className="relative block min-w-0 sm:w-80">
               <IoSearchOutline className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
@@ -167,7 +234,7 @@ const ClassPage = () => {
           </div>
         </div>
 
-        {isExportOpen && (
+        {isAdmin && isExportOpen && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
             onClick={() => {
@@ -287,8 +354,9 @@ const ClassPage = () => {
               В классе пока нет учеников
             </h2>
             <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
-              Добавь ученика через кнопку в правом нижнем углу. После этого он
-              появится в таблице.
+              Добавь ученика через кнопку в правом нижнем углу или импортируй
+              CSV/XLSX с колонками last_name, first_name, middle_name, email,
+              grade, class_letter.
             </p>
           </div>
         )}
@@ -350,6 +418,7 @@ const ClassPage = () => {
           <StudentModal
             studentId={selectedId}
             onClose={() => setSelectedId(null)}
+            onChanged={fetchStudents}
           />
         )}
       </div>

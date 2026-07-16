@@ -2,6 +2,9 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
   IoClose,
+  IoCreateOutline,
+  IoSaveOutline,
+  IoTrashOutline,
   IoMailOutline,
   IoNotificationsOutline,
   IoPersonCircleOutline,
@@ -9,10 +12,13 @@ import {
 } from "react-icons/io5";
 import {
   addBehavior,
+  deleteStudent,
   getBehaviorHistory,
   getStudentById,
+  updateStudent,
 } from "../api/student";
 import type { BehaviorRecord } from "../types/behavior.types";
+import type { BehaviorSeverity } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
 import { useAuth } from "../context/authContext";
 import { toastBus } from "../utils/toastBus";
@@ -20,6 +26,7 @@ import { toastBus } from "../utils/toastBus";
 interface Props {
   studentId: string;
   onClose: () => void;
+  onChanged?: () => void;
 }
 
 const subjects = [
@@ -46,36 +53,66 @@ const subjects = [
 ];
 
 const reasons = [
-  "Не сделал домашнее задание",
-  "Забыл тетрадь",
-  "Забыл учебник",
-  "Не готов к уроку",
-  "Опоздал на урок",
-  "Пропуск урока без уважительной причины",
-  "Разговаривал на уроке",
-  "Мешал вести урок",
-  "Нарушал дисциплину",
-  "Пользовался телефоном на уроке",
-  "Списывал",
-  "Грубил учителю",
-  "Конфликтовал с одноклассниками",
-  "Портил школьное имущество",
-  "Нарушение формы одежды",
-  "Не сдал контрольную работу",
-  "Не сдал проект вовремя",
-  "Отказался выполнять задание",
+  "Саботаж работы / Невыполнение инструкций",
+  "Использование гаджета без разрешения",
+  "Нарушение тишины и помехи классу",
+  "Некорректные высказывания",
+  "Нарушение правил безопасности / ТБ",
+  "Мелкая порча имущества",
+  "Опоздание",
+  "Отсутствие формы",
 ];
 
-const StudentModal = ({ studentId, onClose }: Props) => {
+const severityOptions: Array<{
+  value: BehaviorSeverity;
+  label: string;
+  tone: string;
+}> = [
+  {
+    value: "green",
+    label: "Зелёный",
+    tone: "bg-emerald-50 text-emerald-700",
+  },
+  {
+    value: "yellow",
+    label: "Жёлтый",
+    tone: "bg-amber-50 text-amber-700",
+  },
+  {
+    value: "red",
+    label: "Красный",
+    tone: "bg-red-50 text-red-700",
+  },
+];
+
+const getSeverityLabel = (severity: BehaviorSeverity) =>
+  severityOptions.find((option) => option.value === severity)?.label ?? severity;
+
+const getSeverityTone = (severity: BehaviorSeverity) =>
+  severityOptions.find((option) => option.value === severity)?.tone ??
+  "bg-zinc-100 text-zinc-700";
+
+const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [student, setStudent] = useState<StudentResponce | null>(null);
+  const [severity, setSeverity] = useState<BehaviorSeverity>("yellow");
   const [subject, setSubject] = useState("");
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<BehaviorRecord[]>([]);
   const [isStudentLoading, setIsStudentLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    middle_name: "",
+    email: "",
+    grade: "",
+    class_letter: "",
+  });
 
   useEffect(() => {
     const fetchStudent = async () => {
@@ -87,6 +124,14 @@ const StudentModal = ({ studentId, onClose }: Props) => {
         ]);
 
         setStudent(studentData);
+        setEditForm({
+          first_name: studentData.first_name,
+          last_name: studentData.last_name,
+          middle_name: studentData.middle_name,
+          email: studentData.email,
+          grade: String(studentData.grade),
+          class_letter: studentData.class_letter,
+        });
         setHistory(historyData);
       } catch {
         toastBus.error("Не удалось загрузить карточку ученика.");
@@ -105,6 +150,7 @@ const StudentModal = ({ studentId, onClose }: Props) => {
       setLoading(true);
 
       await addBehavior(student.id, {
+        severity,
         subject,
         reasons: selectedReasons,
         comment: comment || undefined,
@@ -113,6 +159,7 @@ const StudentModal = ({ studentId, onClose }: Props) => {
       const updatedHistory = await getBehaviorHistory(student.id);
       setHistory(updatedHistory);
       toastBus.success("Уведомление отправлено");
+      setSeverity("yellow");
       setSubject("");
       setSelectedReasons([]);
       setComment("");
@@ -120,6 +167,52 @@ const StudentModal = ({ studentId, onClose }: Props) => {
       toastBus.error("Ошибка отправки уведомления.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveStudent = async () => {
+    if (!student) return;
+
+    try {
+      setIsSavingStudent(true);
+      const updated = await updateStudent(student.id, {
+        ...editForm,
+        grade: Number(editForm.grade),
+      });
+      setStudent(updated);
+      setEditForm({
+        first_name: updated.first_name,
+        last_name: updated.last_name,
+        middle_name: updated.middle_name,
+        email: updated.email,
+        grade: String(updated.grade),
+        class_letter: updated.class_letter,
+      });
+      setIsEditing(false);
+      onChanged?.();
+      toastBus.success("Ученик обновлён");
+    } catch {
+      toastBus.error("Не удалось обновить ученика.");
+    } finally {
+      setIsSavingStudent(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!student) return;
+    const confirmed = window.confirm("Удалить ученика? Это действие необратимо.");
+    if (!confirmed) return;
+
+    try {
+      setIsSavingStudent(true);
+      await deleteStudent(student.id);
+      toastBus.success("Ученик удалён");
+      onChanged?.();
+      onClose();
+    } catch {
+      toastBus.error("Не удалось удалить ученика.");
+    } finally {
+      setIsSavingStudent(false);
     }
   };
 
@@ -170,22 +263,91 @@ const StudentModal = ({ studentId, onClose }: Props) => {
           <div className="grid max-h-[calc(100vh-9rem)] overflow-y-auto lg:grid-cols-[0.95fr_1.05fr]">
             <div className="border-b border-zinc-200 p-5 sm:p-6 lg:border-b-0 lg:border-r">
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  Данные ученика
-                </p>
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold text-zinc-500">ФИО</p>
-                    <p className="mt-1 font-bold text-zinc-950">
-                      {student?.last_name} {student?.first_name}{" "}
-                      {student?.middle_name}
-                    </p>
-                  </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">
+                    Данные ученика
+                  </p>
                   {isAdmin && (
-                    <div className="flex items-center gap-2 text-sm text-zinc-700">
-                      <IoMailOutline className="h-5 w-5 text-zinc-400" />
-                      <span className="break-all">{student?.email}</span>
+                    <div className="flex items-center gap-2">
+                      {isEditing ? (
+                        <button
+                          type="button"
+                          onClick={handleSaveStudent}
+                          disabled={isSavingStudent}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          title="Сохранить"
+                        >
+                          <IoSaveOutline className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(true)}
+                          disabled={isSavingStudent}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"
+                          title="Редактировать"
+                        >
+                          <IoCreateOutline className="h-5 w-5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleDeleteStudent}
+                        disabled={isSavingStudent}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Удалить"
+                      >
+                        <IoTrashOutline className="h-5 w-5" />
+                      </button>
                     </div>
+                  )}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {isEditing ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {[
+                        ["last_name", "Фамилия"],
+                        ["first_name", "Имя"],
+                        ["middle_name", "Отчество"],
+                        ["email", "Email родителя"],
+                        ["grade", "Класс"],
+                        ["class_letter", "Буква"],
+                      ].map(([field, label]) => (
+                        <label
+                          key={field}
+                          className="grid gap-1 text-xs font-semibold text-zinc-500"
+                        >
+                          {label}
+                          <input
+                            value={editForm[field as keyof typeof editForm]}
+                            onChange={(event) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                [field]: event.target.value,
+                              }))
+                            }
+                            type={field === "grade" ? "number" : "text"}
+                            className="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none transition focus:border-cyan-400"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-500">ФИО</p>
+                        <p className="mt-1 font-bold text-zinc-950">
+                          {student?.last_name} {student?.first_name}{" "}
+                          {student?.middle_name}
+                        </p>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-2 text-sm text-zinc-700">
+                          <IoMailOutline className="h-5 w-5 text-zinc-400" />
+                          <span className="break-all">{student?.email}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -223,6 +385,14 @@ const StudentModal = ({ studentId, onClose }: Props) => {
                           </span>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
+                          <span
+                            className={[
+                              "rounded-lg px-2.5 py-1 text-xs font-semibold",
+                              getSeverityTone(item.severity),
+                            ].join(" ")}
+                          >
+                            {getSeverityLabel(item.severity)}
+                          </span>
                           {item.reasons.map((reason) => (
                             <span
                               key={reason}
@@ -260,6 +430,23 @@ const StudentModal = ({ studentId, onClose }: Props) => {
               </div>
 
               <div className="grid gap-4">
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Уровень
+                  <select
+                    value={severity}
+                    onChange={(e) =>
+                      setSeverity(e.target.value as BehaviorSeverity)
+                    }
+                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                  >
+                    {severityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <label className="grid gap-2 text-sm font-semibold text-zinc-700">
                   Предмет
                   <select
@@ -308,10 +495,14 @@ const StudentModal = ({ studentId, onClose }: Props) => {
                   Комментарий
                   <textarea
                     value={comment}
-                    onChange={(e) => setComment(e.target.value)}
+                    onChange={(e) => setComment(e.target.value.slice(0, 150))}
+                    maxLength={150}
                     placeholder="Дополнительные детали для родителя"
                     className="min-h-28 resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
                   />
+                  <span className="text-xs font-medium text-zinc-400">
+                    {comment.length}/150
+                  </span>
                 </label>
 
                 <button

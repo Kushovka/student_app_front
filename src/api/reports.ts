@@ -27,6 +27,14 @@ export interface ExportBehaviorReportResponse {
   items: BehaviorReportItem[];
 }
 
+export interface DashboardResponse {
+  total_7_days: number;
+  total_30_days: number;
+  top_classes: Array<{ class_name: string; total: number }>;
+  top_reasons: Array<{ reason: string; total: number }>;
+  severity: Record<"green" | "yellow" | "red", number>;
+}
+
 export const exportBehaviorReport = async (
   payload: ExportBehaviorReportPayload,
   format: ReportFormat = "json",
@@ -46,5 +54,10 @@ export const exportBehaviorReport = async (
       params: { format },
     },
   );
+  return data;
+};
+
+export const getDashboard = async () => {
+  const { data } = await api.get<DashboardResponse>("/reports/dashboard");
   return data;
 };

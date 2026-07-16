@@ -3,7 +3,7 @@ export type StudentResponce = {
   last_name: string;
   middle_name: string;
   email: string;
-  grade: string;
+  grade: number;
   class_letter: string;
   id: string;
 };

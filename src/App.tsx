@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   IoAdd,
+  IoBarChartOutline,
   IoLogOutOutline,
   IoPersonCircleOutline,
   IoPeopleOutline,
@@ -21,6 +22,7 @@ import ToastHost from "./components/ToastHost";
 import { AuthProvider } from "./context/authContext";
 import AuthPage from "./features/AuthPage";
 import ClassPage from "./features/ClassPage";
+import DashboardPage from "./features/DashboardPage";
 import GradePage from "./features/GradePage";
 import ProfilePage from "./features/ProfilePage";
 import TableGrades from "./features/TableGrades";
@@ -138,13 +140,22 @@ const AppLayout = () => {
             </button>
 
             {isAdmin && (
-              <button
-                onClick={() => navigate("/users")}
-                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"
-              >
-                <IoPeopleOutline className="h-5 w-5" />
-                <span className="hidden sm:inline">Пользователи</span>
-              </button>
+              <>
+                <button
+                  onClick={() => navigate("/dashboard")}
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"
+                >
+                  <IoBarChartOutline className="h-5 w-5" />
+                  <span className="hidden sm:inline">Dashboard</span>
+                </button>
+                <button
+                  onClick={() => navigate("/users")}
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"
+                >
+                  <IoPeopleOutline className="h-5 w-5" />
+                  <span className="hidden sm:inline">Пользователи</span>
+                </button>
+              </>
             )}
 
             <button
@@ -195,6 +206,7 @@ const App = () => {
           <Route element={<AppLayout />}>
             <Route path="/" element={<TableGrades />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/grade/:grade" element={<GradePage />} />
             <Route path="/grade/:grade/:letter" element={<ClassPage />} />
