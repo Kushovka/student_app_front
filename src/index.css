@@ -1,24 +1,37 @@
-@import url(https://fonts.googleapis.com/css?family=Montserrat:100,200,300,regular,500,600,700,800,900,100italic,200italic,300italic,italic,500italic,600italic,700italic,800italic,900italic);
+@import url(https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap);
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
-  font-family: "Montserrat", sans-serif;
+html {
+  background: #f6f7f9;
+  font-size: 16px;
 }
 
-html {
-  background: #f5f7fb;
+html.dark {
+  background: #151515;
 }
 
 body {
   min-width: 320px;
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 34rem),
-    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-  color: #18181b;
+  background: #f6f7f9;
+  color: #172033;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark body {
+  background: #151515;
+  color: #f8fafc;
 }
 
 button,
@@ -30,4 +43,140 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.16);
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8;
+  }
+
+  .page-title {
+    @apply text-3xl font-extrabold tracking-normal text-slate-950 sm:text-4xl;
+  }
+
+  .page-kicker {
+    @apply text-sm font-bold uppercase tracking-[0.08em] text-blue-700;
+  }
+
+  .surface {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+  }
+
+  .field {
+    @apply h-12 rounded-lg border border-slate-300 bg-white px-3 text-base font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500;
+  }
+
+  .button-primary {
+    @apply inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-blue-700 px-5 text-base font-bold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400;
+  }
+
+  .button-secondary {
+    @apply inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-base font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .button-danger {
+    @apply inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-red-700 px-5 text-base font-bold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:bg-red-300;
+  }
+
+  .auth-field {
+    @apply h-14 w-full rounded-2xl border border-slate-300 bg-transparent px-5 text-base font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-500/20;
+  }
+}
+
+@layer utilities {
+  .dark .bg-white {
+    background-color: #1f1f1f;
+  }
+
+  .dark .bg-slate-50,
+  .dark .bg-zinc-50 {
+    background-color: #151515;
+  }
+
+  .dark .bg-slate-100,
+  .dark .bg-zinc-100 {
+    background-color: #262626;
+  }
+
+  .dark .bg-blue-50,
+  .dark .bg-cyan-50 {
+    background-color: rgba(37, 99, 235, 0.14);
+  }
+
+  .dark .bg-red-50 {
+    background-color: rgba(127, 29, 29, 0.28);
+  }
+
+  .dark .bg-amber-50 {
+    background-color: rgba(120, 53, 15, 0.28);
+  }
+
+  .dark .bg-emerald-50 {
+    background-color: rgba(6, 78, 59, 0.28);
+  }
+
+  .dark .border-slate-100,
+  .dark .border-slate-200,
+  .dark .border-zinc-100,
+  .dark .border-zinc-200 {
+    border-color: #2f2f2f;
+  }
+
+  .dark .border-slate-300,
+  .dark .border-zinc-300 {
+    border-color: #3f3f46;
+  }
+
+  .dark .text-slate-950,
+  .dark .text-slate-900,
+  .dark .text-zinc-950,
+  .dark .text-zinc-900 {
+    color: #f8fafc;
+  }
+
+  .dark .text-slate-800,
+  .dark .text-slate-700,
+  .dark .text-zinc-800,
+  .dark .text-zinc-700 {
+    color: #e2e8f0;
+  }
+
+  .dark .text-slate-600,
+  .dark .text-slate-500,
+  .dark .text-zinc-600,
+  .dark .text-zinc-500 {
+    color: #94a3b8;
+  }
+
+  .dark .shadow-sm,
+  .dark .shadow-md,
+  .dark .shadow-lg,
+  .dark .shadow-xl,
+  .dark .shadow-2xl {
+    box-shadow: none;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    background-color: #1f1f1f;
+    color: #f8fafc;
+  }
+
+  .dark table thead {
+    background-color: #181818;
+  }
+
+  .dark table tbody tr:hover {
+    background-color: rgba(37, 99, 235, 0.12);
+  }
 }

@@ -2,13 +2,13 @@ import { type FormEvent, useEffect, useState } from "react";
 import { AxiosError } from "axios";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
-  IoCheckmarkCircleOutline,
   IoLogInOutline,
   IoPersonAddOutline,
-  IoSchoolOutline,
 } from "react-icons/io5";
 import { loginUser, registerUser } from "../api/auth";
 import { getSchools, type School } from "../api/schools";
+import AppLogo from "../components/AppLogo";
+import ThemeToggle from "../components/ThemeToggle";
 import { getAccessToken, setAccessToken } from "../utils/authToken";
 
 type AuthMode = "login" | "register";
@@ -127,126 +127,86 @@ const AuthPage = ({ mode }: AuthPageProps) => {
   };
 
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <section className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="hidden rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm lg:block">
-          <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-950 text-white">
-              <IoSchoolOutline className="h-6 w-6" />
-            </span>
-            <div>
-              <p className="text-lg font-bold text-zinc-950">School List</p>
-              <p className="text-sm font-medium text-zinc-500">
-                Панель для школы
-              </p>
-            </div>
-          </div>
+    <main className="min-h-screen bg-[#f6f7f9] px-4 text-slate-950 transition-colors dark:bg-[#151515] dark:text-slate-100">
+      <div className="fixed right-4 top-4 z-10 sm:right-6 sm:top-6">
+        <ThemeToggle compact />
+      </div>
 
-          <div className="mt-12">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700">
-              Быстрый доступ
-            </p>
-            <h1 className="mt-3 max-w-md text-4xl font-bold leading-tight text-zinc-950">
-              Ученики, классы и уведомления в одном месте
+      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center py-12">
+        <div className="mb-10 flex flex-col items-center text-center">
+          <AppLogo className="h-24 w-24" />
+          <div className="mt-4 flex items-center gap-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-blue-600 dark:text-blue-400">
+              Школьный контроль
             </h1>
-            <p className="mt-4 max-w-md text-sm leading-6 text-zinc-600">
-              После входа открывается защищенная рабочая зона: список классов,
-              ученики и отправка уведомлений родителям.
-            </p>
           </div>
-
-          <div className="mt-10 grid gap-3">
-            {["Защищенный вход", "Единый список учеников", "История замечаний"].map(
-              (item) => (
-                <div key={item} className="flex items-center gap-3">
-                  <IoCheckmarkCircleOutline className="h-5 w-5 text-cyan-700" />
-                  <span className="text-sm font-semibold text-zinc-700">
-                    {item}
-                  </span>
-                </div>
-              ),
-            )}
-          </div>
+          <p className="mt-3 text-base font-medium text-slate-500 dark:text-slate-400">
+            {isLogin
+              ? "Войдите, чтобы открыть рабочий журнал"
+              : "Создайте аккаунт сотрудника школы"}
+          </p>
         </div>
 
-        <div className="mx-auto w-full max-w-md lg:max-w-lg">
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-950 text-white">
-              <IoSchoolOutline className="h-6 w-6" />
-            </span>
-            <div>
-              <p className="text-lg font-bold text-zinc-950">School List</p>
-              <p className="text-sm font-medium text-zinc-500">
-                Панель для школы
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700">
-              {isLogin ? "Авторизация" : "Новый аккаунт"}
-            </p>
-            <h1 className="mt-2 text-3xl font-bold text-zinc-950">
-              {isLogin ? "Вход в систему" : "Регистрация"}
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">
-              {isLogin
-                ? "Введи email и пароль, чтобы открыть приложение."
-                : "Заполни данные, затем войди по email и паролю."}
-            </p>
-          </div>
-
+        <div className="w-full">
           <form
             onSubmit={handleSubmit}
-            className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6"
+            className="grid gap-3"
           >
             {!isLogin && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium text-zinc-700">
+              <div className="grid gap-3">
+                <label className="sr-only" htmlFor="last_name">
                   Фамилия
-                  <input
-                    value={form.last_name}
-                    onChange={(event) =>
-                      updateField("last_name", event.target.value)
-                    }
-                    className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                    required
-                  />
                 </label>
+                <input
+                  id="last_name"
+                  value={form.last_name}
+                  onChange={(event) =>
+                    updateField("last_name", event.target.value)
+                  }
+                  placeholder="Фамилия"
+                  className="auth-field"
+                  required
+                />
 
-                <label className="grid gap-2 text-sm font-medium text-zinc-700">
+                <label className="sr-only" htmlFor="first_name">
                   Имя
-                  <input
-                    value={form.first_name}
-                    onChange={(event) =>
-                      updateField("first_name", event.target.value)
-                    }
-                    className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                    required
-                  />
                 </label>
+                <input
+                  id="first_name"
+                  value={form.first_name}
+                  onChange={(event) =>
+                    updateField("first_name", event.target.value)
+                  }
+                  placeholder="Имя"
+                  className="auth-field"
+                  required
+                />
 
-                <label className="grid gap-2 text-sm font-medium text-zinc-700 sm:col-span-2">
+                <label className="sr-only" htmlFor="middle_name">
                   Отчество
+                </label>
                   <input
-                    value={form.middle_name}
+                  id="middle_name"
+                  value={form.middle_name}
                     onChange={(event) =>
-                      updateField("middle_name", event.target.value)
+                    updateField("middle_name", event.target.value)
                     }
-                    className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                  placeholder="Отчество"
+                  className="auth-field"
                     required
                   />
-                </label>
 
-                <label className="grid gap-2 text-sm font-medium text-zinc-700 sm:col-span-2">
+                <label className="sr-only" htmlFor="school_id">
                   Школа
+                </label>
                   <select
+                  id="school_id"
                     value={form.school_id}
                     onChange={(event) =>
                       updateField("school_id", event.target.value)
                     }
                     disabled={isSchoolsLoading || schools.length === 0}
-                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                  className="auth-field"
                     required
                   >
                     <option value="">
@@ -258,44 +218,47 @@ const AuthPage = ({ mode }: AuthPageProps) => {
                       </option>
                     ))}
                   </select>
-                </label>
               </div>
             )}
 
             <div
               className={
                 isLogin
-                  ? "grid gap-4"
-                  : "mt-4 grid gap-4 sm:grid-cols-2"
+                  ? "grid gap-3"
+                  : "grid gap-3"
               }
             >
-              <label className="grid gap-2 text-sm font-medium text-zinc-700 sm:col-span-2">
+              <label className="sr-only" htmlFor="email">
                 Email
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => updateField("email", event.target.value)}
-                  className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                  required
-                />
               </label>
+              <input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(event) => updateField("email", event.target.value)}
+                placeholder="Адрес электронной почты"
+                className="auth-field"
+                required
+              />
 
-              <label className="grid gap-2 text-sm font-medium text-zinc-700 sm:col-span-2">
+              <label className="sr-only" htmlFor="password">
                 Пароль
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(event) =>
-                    updateField("password", event.target.value)
-                  }
-                  className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                  required
-                />
               </label>
+              <input
+                id="password"
+                type="password"
+                value={form.password}
+                onChange={(event) =>
+                  updateField("password", event.target.value)
+                }
+                placeholder="Пароль"
+                className="auth-field"
+                required
+              />
             </div>
 
             {error && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -303,7 +266,7 @@ const AuthPage = ({ mode }: AuthPageProps) => {
             <button
               type="submit"
               disabled={isSubmitting || (!isLogin && isSchoolsLoading)}
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-zinc-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400 active:scale-[0.98]"
+              className="mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-base font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               {isLogin ? (
                 <IoLogInOutline className="h-5 w-5" />
@@ -311,22 +274,31 @@ const AuthPage = ({ mode }: AuthPageProps) => {
                 <IoPersonAddOutline className="h-5 w-5" />
               )}
               {isSubmitting
-                ? "Подожди..."
+                ? "Подождите..."
                 : isLogin
                   ? "Войти"
                   : "Зарегистрироваться"}
             </button>
           </form>
 
-          <p className="mt-5 text-center text-sm text-zinc-600">
-            {isLogin ? "Нет аккаунта?" : "Уже есть аккаунт?"}{" "}
+          <div className="mt-6 flex items-center justify-between text-sm font-semibold">
+            <span className="text-slate-500 dark:text-slate-500">
+              {isLogin ? "Нет аккаунта?" : "Уже есть аккаунт?"}
+            </span>
             <Link
               to={isLogin ? "/register" : "/login"}
-              className="font-bold text-cyan-700 hover:text-cyan-800"
+              className="text-blue-600 transition hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
             >
               {isLogin ? "Зарегистрироваться" : "Войти"}
             </Link>
-          </p>
+          </div>
+
+          {isLogin && (
+            <p className="mt-6 text-center text-sm leading-6 text-slate-500 dark:text-slate-500">
+              Используя систему, вы подтверждаете право доступа к данным своей
+              школы.
+            </p>
+          )}
         </div>
       </section>
     </main>

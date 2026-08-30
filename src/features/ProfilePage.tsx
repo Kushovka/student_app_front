@@ -1,8 +1,20 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
-import { IoArrowBackOutline, IoPersonCircleOutline } from "react-icons/io5";
+import {
+  IoArrowBackOutline,
+  IoChatbubbleEllipsesOutline,
+  IoCopyOutline,
+  IoKeyOutline,
+  IoPersonCircleOutline,
+} from "react-icons/io5";
 import { useNavigate } from "react-router";
-import { updateMe, type UpdateMePayload } from "../api/profile";
+import {
+  changePassword,
+  getMaxLinkCode,
+  updateMe,
+  type MaxLinkCodeResponse,
+  type UpdateMePayload,
+} from "../api/profile";
 import { useAuth } from "../context/authContext";
 import { formatRole } from "../utils/formatRole";
 import { toastBus } from "../utils/toastBus";
@@ -25,11 +37,20 @@ const ProfilePage = () => {
   const { user, isUserLoading, refreshMe } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [maxLink, setMaxLink] = useState<MaxLinkCodeResponse | null>(null);
+  const [isMaxLoading, setIsMaxLoading] = useState(false);
   const [form, setForm] = useState<UpdateMePayload>({
     first_name: "",
     last_name: "",
     middle_name: "",
     email: "",
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
   });
 
   const resetFormFromUser = () => {
@@ -75,6 +96,73 @@ const ProfilePage = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handlePasswordChange = async () => {
+    if (
+      !passwordForm.current_password ||
+      !passwordForm.new_password ||
+      !passwordForm.confirm_password
+    ) {
+      toastBus.error("Заполните все поля пароля.");
+      return;
+    }
+
+    if (passwordForm.new_password.length < 8) {
+      toastBus.error("Новый пароль должен быть не короче 8 символов.");
+      return;
+    }
+
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      toastBus.error("Новый пароль и подтверждение не совпадают.");
+      return;
+    }
+
+    try {
+      setIsPasswordSaving(true);
+      await changePassword({
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+      });
+      setPasswordForm({
+        current_password: "",
+        new_password: "",
+        confirm_password: "",
+      });
+      setIsPasswordModalOpen(false);
+      toastBus.success("Пароль изменён");
+    } catch {
+      toastBus.error("Не удалось изменить пароль. Проверьте текущий пароль.");
+    } finally {
+      setIsPasswordSaving(false);
+    }
+  };
+
+  const closePasswordModal = () => {
+    if (isPasswordSaving) return;
+    setIsPasswordModalOpen(false);
+    setPasswordForm({
+      current_password: "",
+      new_password: "",
+      confirm_password: "",
+    });
+  };
+
+  const loadMaxLinkCode = async () => {
+    try {
+      setIsMaxLoading(true);
+      setMaxLink(await getMaxLinkCode());
+    } catch {
+      toastBus.error("Не удалось получить код MAX.");
+    } finally {
+      setIsMaxLoading(false);
+    }
+  };
+
+  const copyMaxCommand = async () => {
+    if (!maxLink) return;
+    await navigator.clipboard.writeText(`/start ${maxLink.code}`);
+    toastBus.success("Команда скопирована");
   };
 
   return (
@@ -304,13 +392,200 @@ const ProfilePage = () => {
                       )}
                     </div>
                   </div>
+                  <div className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="text-sm font-medium text-zinc-600">
+                      Пароль
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPasswordModalOpen(true)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                    >
+                      <IoKeyOutline className="h-4 w-4" />
+                      Изменить пароль
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {user.role === "parent" && (
+              <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm lg:col-span-3">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                      <IoChatbubbleEllipsesOutline className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-zinc-950">
+                        Уведомления в MAX
+                      </h2>
+                      <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-zinc-500">
+                        Подключите бота MAX, чтобы получать сообщения о новых
+                        замечаниях дополнительно к почте.
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={[
+                      "inline-flex h-9 items-center rounded-lg px-3 text-sm font-bold",
+                      user.max_connected
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-zinc-100 text-zinc-600",
+                    ].join(" ")}
+                  >
+                    {user.max_connected ? "Подключено" : "Не подключено"}
+                  </span>
+                </div>
+
+                <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+                  {maxLink ? (
+                    <div className="grid gap-3">
+                      <div className="text-sm font-semibold text-zinc-600">
+                        Отправьте боту MAX эту команду:
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <div className="flex min-h-11 flex-1 items-center rounded-lg border border-zinc-200 bg-white px-3 font-mono text-sm font-bold text-zinc-950">
+                          /start {maxLink.code}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={copyMaxCommand}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                        >
+                          <IoCopyOutline className="h-5 w-5" />
+                          Скопировать
+                        </button>
+                      </div>
+                      {maxLink.bot_username && (
+                        <div className="text-sm font-medium text-zinc-500">
+                          Бот: @{maxLink.bot_username}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm font-medium leading-6 text-zinc-500">
+                        Получите код подключения и отправьте его боту MAX.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={loadMaxLinkCode}
+                        disabled={isMaxLoading}
+                        className="inline-flex h-11 items-center justify-center rounded-lg bg-zinc-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isMaxLoading ? "Получаем..." : "Получить код"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
+      {isPasswordModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
+          onClick={closePasswordModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-zinc-200 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
+                  <IoKeyOutline className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-950">
+                    Изменить пароль
+                  </h2>
+                  <p className="mt-1 text-sm font-medium leading-6 text-zinc-500">
+                    Минимальная длина нового пароля — 8 символов.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 px-5 py-4">
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Текущий пароль
+                <input
+                  type="password"
+                  value={passwordForm.current_password}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      current_password: e.target.value,
+                    }))
+                  }
+                  disabled={isPasswordSaving}
+                  autoComplete="current-password"
+                  className="h-11 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:cursor-not-allowed disabled:bg-zinc-50"
+                  autoFocus
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Новый пароль
+                <input
+                  type="password"
+                  value={passwordForm.new_password}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      new_password: e.target.value,
+                    }))
+                  }
+                  disabled={isPasswordSaving}
+                  autoComplete="new-password"
+                  className="h-11 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:cursor-not-allowed disabled:bg-zinc-50"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Повторите новый пароль
+                <input
+                  type="password"
+                  value={passwordForm.confirm_password}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      confirm_password: e.target.value,
+                    }))
+                  }
+                  disabled={isPasswordSaving}
+                  autoComplete="new-password"
+                  className="h-11 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:cursor-not-allowed disabled:bg-zinc-50"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-2 bg-zinc-50 px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                disabled={isPasswordSaving}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handlePasswordChange}
+                disabled={isPasswordSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <IoKeyOutline className="h-5 w-5" />
+                {isPasswordSaving ? "Сохраняем..." : "Изменить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

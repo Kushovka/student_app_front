@@ -1,12 +1,13 @@
 import type { BehaviorCreate } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
+import type { UserListItem } from "./users";
 import { api } from "./client";
 
 export interface CreateStudent {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  email?: string;
   grade: number;
   class_letter: string;
 }
@@ -19,6 +20,25 @@ export interface StudentsListResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface ClassOption {
+  grade: number;
+  class_letter: string;
+}
+
+export interface ClassOptionsResponse {
+  grades: number[];
+  letters: string[];
+  classes: ClassOption[];
+}
+
+export interface ParentStudentLink {
+  id: string;
+  parent_id: string;
+  student_id: string;
+  relationship?: string | null;
+  parent: UserListItem;
 }
 
 export const getStudents = async (
@@ -36,6 +56,11 @@ export const getStudents = async (
 
 export const createStudents = async (payload: CreateStudent) => {
   const { data } = await api.post("/student/", payload);
+  return data;
+};
+
+export const getClassOptions = async (): Promise<ClassOptionsResponse> => {
+  const { data } = await api.get<ClassOptionsResponse>("/student/class-options");
   return data;
 };
 
@@ -82,10 +107,62 @@ export const getStudentById = async (
   return data;
 };
 
+export const getStudentParents = async (
+  studentId: string,
+): Promise<ParentStudentLink[]> => {
+  const { data } = await api.get<ParentStudentLink[]>(
+    `/student/${studentId}/parents`,
+  );
+  return data;
+};
+
+export const getAvailableParents = async (
+  studentId: string,
+  search?: string,
+): Promise<UserListItem[]> => {
+  const { data } = await api.get<UserListItem[]>(
+    `/student/${studentId}/parents/available`,
+    { params: { search } },
+  );
+  return data;
+};
+
+export const attachParentToStudent = async (
+  studentId: string,
+  parentId: string,
+  relationship?: string,
+): Promise<ParentStudentLink> => {
+  const { data } = await api.post<ParentStudentLink>(
+    `/student/${studentId}/parents`,
+    {
+      parent_id: parentId,
+      relationship,
+    },
+  );
+  return data;
+};
+
+export const detachParentFromStudent = async (
+  studentId: string,
+  parentId: string,
+): Promise<void> => {
+  await api.delete(`/student/${studentId}/parents/${parentId}`);
+};
+
 export const addBehavior = async (
   studentId: string,
   payload: BehaviorCreate,
 ) => {
+  if (payload.photo) {
+    const formData = new FormData();
+    formData.append("subject", payload.subject);
+    formData.append("reasons", JSON.stringify(payload.reasons));
+    if (payload.comment) formData.append("comment", payload.comment);
+    formData.append("photo", payload.photo);
+    const { data } = await api.post(`/behavior/${studentId}`, formData);
+    return data;
+  }
+
   const { data } = await api.post(`/behavior/${studentId}`, payload);
   return data;
 };

@@ -1,15 +1,41 @@
 import { motion } from "framer-motion";
-import { IoClose, IoPersonAddOutline } from "react-icons/io5";
-import type { StudentForm } from "../types/student.type";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
+import {
+  IoAddOutline,
+  IoCheckmarkCircleOutline,
+  IoClose,
+  IoCopyOutline,
+  IoPersonAddOutline,
+  IoSearchOutline,
+} from "react-icons/io5";
+import { attachParentToStudent, getClassOptions } from "../api/student";
+import { createSchoolUser, getUsers, type UserListItem } from "../api/users";
+import type { StudentForm, StudentResponce } from "../types/student.type";
+import { gradeOptions, sortClassLetters } from "../utils/classOptions";
+import { toastBus } from "../utils/toastBus";
 
 interface Props {
   form: StudentForm;
-  setForm: React.Dispatch<React.SetStateAction<StudentForm>>;
+  setForm: Dispatch<SetStateAction<StudentForm>>;
   setOpenCreateModal: (v: boolean) => void;
-  addStudent: () => void;
+  addStudent: (parentEmail?: string) => Promise<StudentResponce>;
 }
 
-const russianLetters = ["А", "Б", "В", "Г", "Д", "Е"];
+const emptyParentForm = {
+  first_name: "",
+  last_name: "",
+  middle_name: "",
+  email: "",
+  relationship: "Родитель",
+};
+
+const generatePassword = () => {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const values = new Uint32Array(16);
+  window.crypto.getRandomValues(values);
+  return Array.from(values, (value) => chars[value % chars.length]).join("");
+};
 
 const CreateStudentModal = ({
   form,
@@ -17,113 +43,309 @@ const CreateStudentModal = ({
   setForm,
   addStudent,
 }: Props) => {
+  const [parents, setParents] = useState<UserListItem[]>([]);
+  const [parentSearch, setParentSearch] = useState("");
+  const [selectedParent, setSelectedParent] = useState<UserListItem | null>(null);
+  const [newParentForm, setNewParentForm] = useState(emptyParentForm);
+  const [isCreatingParent, setIsCreatingParent] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
+  const [schoolLetters, setSchoolLetters] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        const [users, classOptions] = await Promise.all([
+          getUsers(),
+          getClassOptions(),
+        ]);
+        setParents(users.filter((user) => user.role === "parent"));
+        setSchoolLetters(sortClassLetters(classOptions.letters));
+      } catch {
+        setParents([]);
+        setSchoolLetters([]);
+      }
+    };
+
+    loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    if (!form.class_letter || schoolLetters.includes(form.class_letter)) return;
+    updateField("class_letter", "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.class_letter, schoolLetters]);
+
+  const filteredParents = useMemo(() => {
+    const query = parentSearch.trim().toLowerCase();
+    if (!query) return parents.slice(0, 8);
+
+    return parents
+      .filter((parent) =>
+        [
+          parent.last_name,
+          parent.first_name,
+          parent.middle_name,
+          parent.email,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query),
+      )
+      .slice(0, 20);
+  }, [parentSearch, parents]);
+
   const updateField = (field: keyof StudentForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const closeModal = () => {
+    if (isSaving) return;
+    setOpenCreateModal(false);
+  };
+
+  const resetStudentForm = () => {
+    setForm({
+      first_name: "",
+      last_name: "",
+      middle_name: "",
+      email: "",
+      grade: "",
+      class_letter: "",
+    });
+  };
+
+  const copyValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toastBus.success(`${label} скопирован`);
+    } catch {
+      toastBus.error("Не удалось скопировать.");
+    }
+  };
+
+  const validateStudent = () => {
+    if (
+      !form.last_name.trim() ||
+      !form.first_name.trim() ||
+      !form.middle_name.trim() ||
+      !form.grade ||
+      !form.class_letter ||
+      !schoolLetters.includes(form.class_letter)
+    ) {
+      toastBus.error("Заполните данные ученика.");
+      return false;
+    }
+    return true;
+  };
+
+  const submit = async () => {
+    if (!validateStudent()) return;
+
+    if (isCreatingParent) {
+      if (
+        !newParentForm.last_name.trim() ||
+        !newParentForm.first_name.trim() ||
+        !newParentForm.email.trim()
+      ) {
+        toastBus.error("Заполните фамилию, имя и email родителя.");
+        return;
+      }
+    }
+
+    try {
+      setIsSaving(true);
+      let parent = selectedParent;
+      let generatedPassword = "";
+
+      if (isCreatingParent) {
+        generatedPassword = generatePassword();
+        parent = await createSchoolUser({
+          first_name: newParentForm.first_name.trim(),
+          last_name: newParentForm.last_name.trim(),
+          middle_name: newParentForm.middle_name.trim(),
+          email: newParentForm.email.trim(),
+          password: generatedPassword,
+          role: "parent",
+        });
+      }
+
+      const student = await addStudent();
+
+      if (parent) {
+        await attachParentToStudent(
+          student.id,
+          parent.id,
+          isCreatingParent
+            ? newParentForm.relationship.trim() || "Родитель"
+            : "Родитель",
+        );
+      }
+
+      if (isCreatingParent && parent) {
+        setCreatedCredentials({
+          email: parent.email,
+          password: generatedPassword,
+        });
+        resetStudentForm();
+        return;
+      }
+
+      toastBus.success(parent ? "Ученик создан и родитель привязан" : "Ученик создан");
+      resetStudentForm();
+      setOpenCreateModal(false);
+    } catch {
+      toastBus.error("Не удалось создать ученика.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (createdCredentials) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.22 }}
+          className="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl shadow-slate-950/20"
+        >
+          <div className="border-b border-slate-200 px-5 py-5 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <IoCheckmarkCircleOutline className="h-9 w-9" />
+            </div>
+            <h2 className="mt-3 text-2xl font-extrabold text-slate-950">
+              Ученик и родитель созданы
+            </h2>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+              Скопируйте доступы и отправьте родителю. После закрытия пароль
+              больше нельзя будет посмотреть.
+            </p>
+          </div>
+          <div className="grid gap-3 p-5">
+            {[
+              ["Email", createdCredentials.email],
+              ["Пароль", createdCredentials.password],
+            ].map(([label, value]) => (
+              <label key={label} className="grid gap-2 text-sm font-bold text-slate-600">
+                {label}
+                <span className="relative block">
+                  <input readOnly value={value} className="field w-full pr-12" />
+                  <button
+                    type="button"
+                    onClick={() => copyValue(value, label)}
+                    className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-blue-700"
+                  >
+                    <IoCopyOutline className="h-5 w-5" />
+                  </button>
+                </span>
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => setOpenCreateModal(false)}
+              className="button-primary mt-2 w-full"
+            >
+              Готово
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div
-      onClick={() => setOpenCreateModal(false)}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
+      onClick={closeModal}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
     >
       <motion.div
         onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.22 }}
-        className="max-h-[calc(100vh-3rem)] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl shadow-zinc-950/20"
+        className="max-h-[calc(100vh-3rem)] w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-2xl shadow-slate-950/20"
       >
-        <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-4 sm:px-6">
+        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+            <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
               <IoPersonAddOutline className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-bold text-zinc-950">
+              <h2 className="text-xl font-extrabold text-slate-950">
                 Новый ученик
               </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Заполни данные ученика и выбери класс.
+              <p className="mt-1 text-base text-slate-500">
+                Заполните данные ученика и при необходимости привяжите родителя.
               </p>
             </div>
           </div>
           <button
-            onClick={() => setOpenCreateModal(false)}
+            onClick={closeModal}
             aria-label="Закрыть"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            <IoClose className="h-5 w-5" />
+            <IoClose className="h-6 w-6" />
           </button>
         </div>
 
         <div className="max-h-[calc(100vh-13rem)] overflow-y-auto px-5 py-5 sm:px-6">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Фамилия
-              <input
-                type="text"
-                value={form.last_name}
-                onChange={(e) => updateField("last_name", e.target.value)}
-                placeholder="Иванов"
-                className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-              />
-            </label>
+            {[
+              ["last_name", "Фамилия", "Иванов"],
+              ["first_name", "Имя", "Иван"],
+              ["middle_name", "Отчество", "Иванович"],
+            ].map(([field, label, placeholder]) => (
+              <label
+                key={field}
+                className="grid gap-2 text-base font-bold text-slate-700"
+              >
+                {label}
+                <input
+                  type="text"
+                  value={form[field as keyof StudentForm]}
+                  onChange={(e) =>
+                    updateField(field as keyof StudentForm, e.target.value)
+                  }
+                  placeholder={placeholder}
+                  className="field"
+                />
+              </label>
+            ))}
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Имя
-              <input
-                type="text"
-                value={form.first_name}
-                onChange={(e) => updateField("first_name", e.target.value)}
-                placeholder="Иван"
-                className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-              />
-            </label>
-
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Отчество
-              <input
-                type="text"
-                value={form.middle_name}
-                onChange={(e) => updateField("middle_name", e.target.value)}
-                placeholder="Иванович"
-                className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-              />
-            </label>
-
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Email родителя
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => updateField("email", e.target.value)}
-                placeholder="parent@mail.ru"
-                className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-              />
-            </label>
-
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-2 text-base font-bold text-slate-700">
               Класс
-              <input
-                type="number"
-                min="1"
-                max="11"
+              <select
                 value={form.grade}
                 onChange={(e) => updateField("grade", e.target.value)}
-                placeholder="7"
-                className="h-11 rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-              />
+                className="field"
+              >
+                <option value="">Выберите класс</option>
+                {gradeOptions.map((grade) => (
+                  <option key={grade} value={grade}>
+                    {grade}
+                  </option>
+                ))}
+              </select>
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-2 text-base font-bold text-slate-700">
               Буква
               <select
                 value={form.class_letter}
                 onChange={(e) => updateField("class_letter", e.target.value)}
-                className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                className="field"
+                disabled={schoolLetters.length === 0}
               >
-                <option value="">Выберите букву</option>
-                {russianLetters.map((letter) => (
+                <option value="">
+                  {schoolLetters.length === 0
+                    ? "В школе пока нет букв"
+                    : "Выберите букву"}
+                </option>
+                {schoolLetters.map((letter) => (
                   <option key={letter} value={letter}>
                     {letter}
                   </option>
@@ -131,22 +353,153 @@ const CreateStudentModal = ({
               </select>
             </label>
           </div>
+
+          <section className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-950">
+                  Родитель
+                </h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Можно пропустить и привязать позже в карточке ученика.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingParent(false);
+                    setSelectedParent(null);
+                  }}
+                  className={[
+                    "button-secondary h-11 px-3 text-sm",
+                    !isCreatingParent && !selectedParent ? "border-blue-500" : "",
+                  ].join(" ")}
+                >
+                  Пропустить
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingParent(true);
+                    setSelectedParent(null);
+                  }}
+                  className={[
+                    "button-secondary h-11 px-3 text-sm",
+                    isCreatingParent ? "border-blue-500" : "",
+                  ].join(" ")}
+                >
+                  <IoAddOutline className="h-5 w-5" />
+                  Новый
+                </button>
+              </div>
+            </div>
+
+            {!isCreatingParent && (
+              <div className="mt-4">
+                {selectedParent ? (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-white px-3 py-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-extrabold text-slate-950">
+                        {selectedParent.last_name} {selectedParent.first_name}{" "}
+                        {selectedParent.middle_name}
+                      </div>
+                      <div className="mt-1 truncate text-sm font-medium text-slate-500">
+                        {selectedParent.email}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedParent(null)}
+                      className="text-sm font-bold text-blue-700"
+                    >
+                      Сменить
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <label className="relative block">
+                      <IoSearchOutline className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={parentSearch}
+                        onChange={(e) => setParentSearch(e.target.value)}
+                        placeholder="Найти существующего родителя"
+                        className="field w-full pl-10"
+                      />
+                    </label>
+                    <div className="mt-3 max-h-44 space-y-2 overflow-y-auto">
+                      {filteredParents.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-center text-sm font-semibold text-slate-500">
+                          Родители не найдены
+                        </div>
+                      ) : (
+                        filteredParents.map((parent) => (
+                          <button
+                            key={parent.id}
+                            type="button"
+                            onClick={() => setSelectedParent(parent)}
+                            className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-blue-400"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-extrabold text-slate-950">
+                                {parent.last_name} {parent.first_name}{" "}
+                                {parent.middle_name}
+                              </span>
+                              <span className="mt-1 block truncate text-sm font-medium text-slate-500">
+                                {parent.email}
+                              </span>
+                            </span>
+                            <IoAddOutline className="h-5 w-5 shrink-0 text-blue-700" />
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {isCreatingParent && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  ["last_name", "Фамилия"],
+                  ["first_name", "Имя"],
+                  ["middle_name", "Отчество"],
+                  ["email", "Email"],
+                  ["relationship", "Кем приходится"],
+                ].map(([field, label]) => (
+                  <input
+                    key={field}
+                    value={newParentForm[field as keyof typeof newParentForm]}
+                    onChange={(e) =>
+                      setNewParentForm((prev) => ({
+                        ...prev,
+                        [field]: e.target.value,
+                      }))
+                    }
+                    placeholder={label}
+                    className={[
+                      "field w-full",
+                      field === "relationship" ? "sm:col-span-2" : "",
+                    ].join(" ")}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 bg-zinc-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <button
-            onClick={() => setOpenCreateModal(false)}
-            type="button"
-            className="h-11 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
-          >
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          <button onClick={closeModal} type="button" className="button-secondary">
             Отмена
           </button>
           <button
-            onClick={addStudent}
+            onClick={submit}
             type="button"
-            className="h-11 rounded-lg bg-zinc-950 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-zinc-800 active:scale-[0.98]"
+            disabled={isSaving}
+            className="button-primary"
           >
-            Добавить ученика
+            {isSaving ? "Создаем..." : "Добавить ученика"}
           </button>
         </div>
       </motion.div>

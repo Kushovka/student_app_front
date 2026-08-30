@@ -16,6 +16,7 @@ export interface UserListItem {
   role: string;
   is_blocked?: boolean;
   school_id: string;
+  max_connected?: boolean;
   school?: UserSchoolInfo;
 }
 
@@ -24,9 +25,88 @@ export const getUsers = async (): Promise<UserListItem[]> => {
   return data;
 };
 
+export interface CreateSchoolAdminPayload {
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  email: string;
+  password: string;
+  school_id: string;
+}
+
+export interface CreateSchoolUserPayload {
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  email: string;
+  password: string;
+  role: "admin" | "teacher" | "parent";
+}
+
+export interface TeacherAssignment {
+  id: string;
+  teacher_id: string;
+  school_id: string;
+  grade: number;
+  class_letter: string;
+  subject: string;
+}
+
+export interface TeacherAssignmentPayload {
+  grade: number;
+  class_letter: string;
+  subject: string;
+}
+
+export const createSchoolAdmin = async (
+  payload: CreateSchoolAdminPayload,
+): Promise<UserListItem> => {
+  const { data } = await api.post<UserListItem>("/users/school-admin", payload);
+  return data;
+};
+
+export const createSchoolUser = async (
+  payload: CreateSchoolUserPayload,
+): Promise<UserListItem> => {
+  const { data } = await api.post<UserListItem>("/users/", payload);
+  return data;
+};
+
 export const getUserById = async (userId: string): Promise<UserListItem> => {
   const { data } = await api.get<UserListItem>(`/users/${userId}`);
   return data;
+};
+
+export const getMyTeacherAssignments = async (): Promise<TeacherAssignment[]> => {
+  const { data } = await api.get<TeacherAssignment[]>("/users/me/assignments");
+  return data;
+};
+
+export const getTeacherAssignments = async (
+  teacherId: string,
+): Promise<TeacherAssignment[]> => {
+  const { data } = await api.get<TeacherAssignment[]>(
+    `/users/${teacherId}/assignments`,
+  );
+  return data;
+};
+
+export const createTeacherAssignment = async (
+  teacherId: string,
+  payload: TeacherAssignmentPayload,
+): Promise<TeacherAssignment> => {
+  const { data } = await api.post<TeacherAssignment>(
+    `/users/${teacherId}/assignments`,
+    payload,
+  );
+  return data;
+};
+
+export const deleteTeacherAssignment = async (
+  teacherId: string,
+  assignmentId: string,
+): Promise<void> => {
+  await api.delete(`/users/${teacherId}/assignments/${assignmentId}`);
 };
 
 export const updateUserRole = async (

@@ -8,7 +8,7 @@ export interface AuthUserPayload {
   email: string;
   password: string;
   school_id: string;
-  role?: "admin" | "teacher";
+  role?: "superadmin" | "admin" | "teacher" | "parent";
 }
 
 export interface LoginPayload {

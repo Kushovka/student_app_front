@@ -1,26 +1,43 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  IoAddOutline,
+  IoCheckmarkCircleOutline,
   IoClose,
+  IoCopyOutline,
   IoCreateOutline,
+  IoImageOutline,
   IoSaveOutline,
+  IoSearchOutline,
   IoTrashOutline,
   IoMailOutline,
-  IoNotificationsOutline,
   IoPersonCircleOutline,
   IoTimeOutline,
 } from "react-icons/io5";
 import {
   addBehavior,
+  attachParentToStudent,
   deleteStudent,
+  detachParentFromStudent,
+  getAvailableParents,
   getBehaviorHistory,
+  getClassOptions,
   getStudentById,
+  getStudentParents,
   updateStudent,
+  type ParentStudentLink,
 } from "../api/student";
+import {
+  createSchoolUser,
+  getMyTeacherAssignments,
+  type TeacherAssignment,
+  type UserListItem,
+} from "../api/users";
+import { api } from "../api/client";
 import type { BehaviorRecord } from "../types/behavior.types";
-import type { BehaviorSeverity } from "../types/behavior.types";
 import type { StudentResponce } from "../types/student.type";
 import { useAuth } from "../context/authContext";
+import { gradeOptions, sortClassLetters } from "../utils/classOptions";
 import { toastBus } from "../utils/toastBus";
 
 interface Props {
@@ -63,45 +80,56 @@ const reasons = [
   "Отсутствие формы",
 ];
 
-const severityOptions: Array<{
-  value: BehaviorSeverity;
-  label: string;
-  tone: string;
-}> = [
-  {
-    value: "green",
-    label: "Зелёный",
-    tone: "bg-emerald-50 text-emerald-700",
-  },
-  {
-    value: "yellow",
-    label: "Жёлтый",
-    tone: "bg-amber-50 text-amber-700",
-  },
-  {
-    value: "red",
-    label: "Красный",
-    tone: "bg-red-50 text-red-700",
-  },
-];
+const getUploadUrl = (path: string) => {
+  if (path.startsWith("http")) return path;
 
-const getSeverityLabel = (severity: BehaviorSeverity) =>
-  severityOptions.find((option) => option.value === severity)?.label ?? severity;
+  return `${api.defaults.baseURL ?? ""}${path}`;
+};
 
-const getSeverityTone = (severity: BehaviorSeverity) =>
-  severityOptions.find((option) => option.value === severity)?.tone ??
-  "bg-zinc-100 text-zinc-700";
+const emptyParentForm = {
+  first_name: "",
+  last_name: "",
+  middle_name: "",
+  email: "",
+  relationship: "Родитель",
+};
+
+const generatePassword = () => {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const values = new Uint32Array(16);
+  window.crypto.getRandomValues(values);
+
+  return Array.from(values, (value) => chars[value % chars.length]).join("");
+};
 
 const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [student, setStudent] = useState<StudentResponce | null>(null);
-  const [severity, setSeverity] = useState<BehaviorSeverity>("yellow");
   const [subject, setSubject] = useState("");
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [comment, setComment] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<BehaviorRecord[]>([]);
+  const [parentLinks, setParentLinks] = useState<ParentStudentLink[]>([]);
+  const [availableParents, setAvailableParents] = useState<UserListItem[]>([]);
+  const [parentSearch, setParentSearch] = useState("");
+  const [parentRelationship, setParentRelationship] = useState("Родитель");
+  const [newParentForm, setNewParentForm] = useState(emptyParentForm);
+  const [isCreateParentModalOpen, setIsCreateParentModalOpen] = useState(false);
+  const [isAttachParentModalOpen, setIsAttachParentModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [createdParentCredentials, setCreatedParentCredentials] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
+  const [isParentActionLoading, setIsParentActionLoading] = useState(false);
+  const [brokenPhotoIds, setBrokenPhotoIds] = useState<Set<string>>(new Set());
+  const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>(
+    [],
+  );
   const [isStudentLoading, setIsStudentLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingStudent, setIsSavingStudent] = useState(false);
@@ -113,17 +141,42 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     grade: "",
     class_letter: "",
   });
+  const [schoolLetters, setSchoolLetters] = useState<string[]>([]);
+  const canCreateBehavior = user?.role === "admin" || user?.role === "teacher";
+
+  const availableSubjects = useMemo(() => {
+    if (user?.role !== "teacher" || !student) return subjects;
+    return Array.from(
+      new Set(
+        teacherAssignments
+          .filter(
+            (assignment) =>
+              assignment.grade === student.grade &&
+              assignment.class_letter === student.class_letter,
+          )
+          .map((assignment) => assignment.subject),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [student, teacherAssignments, user?.role]);
 
   useEffect(() => {
     const fetchStudent = async () => {
       try {
         setIsStudentLoading(true);
-        const [studentData, historyData] = await Promise.all([
+        const [studentData, historyData, parentData, classOptions] = await Promise.all([
           getStudentById(studentId),
           getBehaviorHistory(studentId),
+          getStudentParents(studentId),
+          getClassOptions(),
         ]);
 
+        const letters = sortClassLetters(classOptions.letters);
         setStudent(studentData);
+        setSchoolLetters(
+          letters.includes(studentData.class_letter)
+            ? letters
+            : sortClassLetters([...letters, studentData.class_letter]),
+        );
         setEditForm({
           first_name: studentData.first_name,
           last_name: studentData.last_name,
@@ -133,6 +186,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
           class_letter: studentData.class_letter,
         });
         setHistory(historyData);
+        setParentLinks(parentData);
       } catch {
         toastBus.error("Не удалось загрузить карточку ученика.");
       } finally {
@@ -143,6 +197,56 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     fetchStudent();
   }, [studentId]);
 
+  useEffect(() => {
+    if (user?.role !== "teacher") {
+      setTeacherAssignments([]);
+      return;
+    }
+
+    const loadAssignments = async () => {
+      try {
+        setTeacherAssignments(await getMyTeacherAssignments());
+      } catch {
+        setTeacherAssignments([]);
+      }
+    };
+
+    loadAssignments();
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role === "teacher") {
+      if (availableSubjects.length === 0) {
+        if (subject) setSubject("");
+        return;
+      }
+
+      if (!subject || !availableSubjects.includes(subject)) {
+        setSubject(availableSubjects[0]);
+      }
+      return;
+    }
+
+    if (subject && !availableSubjects.includes(subject)) {
+      setSubject("");
+    }
+  }, [availableSubjects, subject, user?.role]);
+
+  useEffect(() => {
+    if (!isAdmin || !student || !isAttachParentModalOpen) return;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await getAvailableParents(student.id, parentSearch);
+        setAvailableParents(data);
+      } catch {
+        setAvailableParents([]);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [isAdmin, isAttachParentModalOpen, parentSearch, student]);
+
   const handleSend = async () => {
     if (!student || selectedReasons.length === 0 || !subject) return;
 
@@ -150,21 +254,21 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
       setLoading(true);
 
       await addBehavior(student.id, {
-        severity,
         subject,
         reasons: selectedReasons,
         comment: comment || undefined,
+        photo,
       });
 
       const updatedHistory = await getBehaviorHistory(student.id);
       setHistory(updatedHistory);
-      toastBus.success("Уведомление отправлено");
-      setSeverity("yellow");
+      toastBus.success("Замечание сохранено");
       setSubject("");
       setSelectedReasons([]);
       setComment("");
+      setPhoto(null);
     } catch {
-      toastBus.error("Ошибка отправки уведомления.");
+      toastBus.error("Ошибка сохранения замечания.");
     } finally {
       setLoading(false);
     }
@@ -216,30 +320,142 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     }
   };
 
+  const refreshParents = async () => {
+    if (!student) return;
+    const [links, available] = await Promise.all([
+      getStudentParents(student.id),
+      getAvailableParents(student.id, parentSearch),
+    ]);
+    setParentLinks(links);
+    setAvailableParents(available);
+  };
+
+  const handleAttachParent = async (parentId: string) => {
+    if (!student) return;
+    try {
+      setIsParentActionLoading(true);
+      await attachParentToStudent(student.id, parentId, parentRelationship);
+      await refreshParents();
+      setParentRelationship("Родитель");
+      setParentSearch("");
+      setIsAttachParentModalOpen(false);
+      toastBus.success("Родитель привязан");
+    } catch {
+      toastBus.error("Не удалось привязать родителя.");
+    } finally {
+      setIsParentActionLoading(false);
+    }
+  };
+
+  const handleDetachParent = async (parentId: string) => {
+    if (!student) return;
+    try {
+      setIsParentActionLoading(true);
+      await detachParentFromStudent(student.id, parentId);
+      await refreshParents();
+      toastBus.success("Родитель отвязан");
+    } catch {
+      toastBus.error("Не удалось отвязать родителя.");
+    } finally {
+      setIsParentActionLoading(false);
+    }
+  };
+
+  const handleCreateAndAttachParent = async () => {
+    if (!student) return;
+    if (
+      !newParentForm.first_name.trim() ||
+      !newParentForm.last_name.trim() ||
+      !newParentForm.email.trim()
+    ) {
+      toastBus.error("Заполните имя, фамилию и email родителя.");
+      return;
+    }
+
+    const password = generatePassword();
+
+    try {
+      setIsParentActionLoading(true);
+      const parent = await createSchoolUser({
+        first_name: newParentForm.first_name.trim(),
+        last_name: newParentForm.last_name.trim(),
+        middle_name: newParentForm.middle_name.trim(),
+        email: newParentForm.email.trim(),
+        password,
+        role: "parent",
+      });
+      await attachParentToStudent(
+        student.id,
+        parent.id,
+        newParentForm.relationship.trim() || "Родитель",
+      );
+      await refreshParents();
+      setCreatedParentCredentials({
+        email: parent.email,
+        password,
+      });
+      setNewParentForm(emptyParentForm);
+    } catch {
+      toastBus.error("Не удалось создать и привязать родителя.");
+    } finally {
+      setIsParentActionLoading(false);
+    }
+  };
+
+  const copyValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toastBus.success(`${label} скопирован`);
+    } catch {
+      toastBus.error("Не удалось скопировать.");
+    }
+  };
+
+  const closeCreateParentModal = () => {
+    if (isParentActionLoading) return;
+    setIsCreateParentModalOpen(false);
+    setCreatedParentCredentials(null);
+    setNewParentForm(emptyParentForm);
+  };
+
+  const openAttachParentModal = () => {
+    setParentSearch("");
+    setParentRelationship("Родитель");
+    setAvailableParents([]);
+    setIsAttachParentModalOpen(true);
+  };
+
+  const closeAttachParentModal = () => {
+    if (isParentActionLoading) return;
+    setIsAttachParentModalOpen(false);
+    setParentSearch("");
+    setParentRelationship("Родитель");
+  };
+
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
     >
       <motion.div
         onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2 }}
-        className="max-h-[calc(100vh-3rem)] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl shadow-zinc-950/20"
+        className="max-h-[calc(100vh-3rem)] w-full max-w-5xl overflow-hidden rounded-lg bg-white shadow-2xl shadow-slate-950/20"
       >
-        <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-4 sm:px-6">
+        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+            <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
               <IoPersonCircleOutline className="h-6 w-6" />
             </span>
             <div>
-              <h2 className="text-lg font-bold text-zinc-950">
+              <h2 className="text-xl font-extrabold text-slate-950">
                 {student
                   ? `${student.last_name} ${student.first_name}`
                   : "Карточка ученика"}
               </h2>
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-base text-slate-500">
                 {student
                   ? `${student.grade}${student.class_letter} класс`
                   : "Загружаем данные..."}
@@ -249,22 +465,27 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
           <button
             onClick={onClose}
             aria-label="Закрыть"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            <IoClose className="h-5 w-5" />
+            <IoClose className="h-6 w-6" />
           </button>
         </div>
 
         {isStudentLoading ? (
-          <div className="p-8 text-center text-sm font-medium text-zinc-500">
+          <div className="p-8 text-center text-base font-medium text-slate-500">
             Загружаем карточку...
           </div>
         ) : (
-          <div className="grid max-h-[calc(100vh-9rem)] overflow-y-auto lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="border-b border-zinc-200 p-5 sm:p-6 lg:border-b-0 lg:border-r">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+          <div
+            className={[
+              "grid max-h-[calc(100vh-9rem)] overflow-y-auto",
+              canCreateBehavior ? "lg:grid-cols-[0.95fr_1.05fr]" : "",
+            ].join(" ")}
+          >
+            <div className="border-b border-slate-200 p-5 sm:p-6 lg:border-b-0 lg:border-r">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
                     Данные ученика
                   </p>
                   {isAdmin && (
@@ -274,7 +495,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                           type="button"
                           onClick={handleSaveStudent}
                           disabled={isSavingStudent}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-700 text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
                           title="Сохранить"
                         >
                           <IoSaveOutline className="h-5 w-5" />
@@ -284,7 +505,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                           type="button"
                           onClick={() => setIsEditing(true)}
                           disabled={isSavingStudent}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"
+                          className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50"
                           title="Редактировать"
                         >
                           <IoCreateOutline className="h-5 w-5" />
@@ -294,7 +515,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                         type="button"
                         onClick={handleDeleteStudent}
                         disabled={isSavingStudent}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex h-11 w-11 items-center justify-center rounded-lg border border-red-200 bg-white text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                         title="Удалить"
                       >
                         <IoTrashOutline className="h-5 w-5" />
@@ -310,12 +531,10 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                         ["first_name", "Имя"],
                         ["middle_name", "Отчество"],
                         ["email", "Email родителя"],
-                        ["grade", "Класс"],
-                        ["class_letter", "Буква"],
                       ].map(([field, label]) => (
                         <label
                           key={field}
-                          className="grid gap-1 text-xs font-semibold text-zinc-500"
+                          className="grid gap-2 text-sm font-bold text-slate-600"
                         >
                           {label}
                           <input
@@ -326,24 +545,63 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                                 [field]: event.target.value,
                               }))
                             }
-                            type={field === "grade" ? "number" : "text"}
-                            className="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none transition focus:border-cyan-400"
+                            type="text"
+                            className="field"
                           />
                         </label>
                       ))}
+                      <label className="grid gap-2 text-sm font-bold text-slate-600">
+                        Класс
+                        <select
+                          value={editForm.grade}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              grade: event.target.value,
+                            }))
+                          }
+                          className="field"
+                        >
+                          {gradeOptions.map((grade) => (
+                            <option key={grade} value={grade}>
+                              {grade}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-2 text-sm font-bold text-slate-600">
+                        Буква
+                        <select
+                          value={editForm.class_letter}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              class_letter: event.target.value,
+                            }))
+                          }
+                          className="field"
+                          disabled={schoolLetters.length === 0}
+                        >
+                          {schoolLetters.map((letter) => (
+                            <option key={letter} value={letter}>
+                              {letter}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
                   ) : (
                     <>
                       <div>
-                        <p className="text-xs font-semibold text-zinc-500">ФИО</p>
-                        <p className="mt-1 font-bold text-zinc-950">
+                        <p className="text-sm font-bold text-slate-500">ФИО</p>
+                        <p className="mt-1 text-lg font-extrabold text-slate-950">
                           {student?.last_name} {student?.first_name}{" "}
                           {student?.middle_name}
                         </p>
                       </div>
                       {isAdmin && (
-                        <div className="flex items-center gap-2 text-sm text-zinc-700">
-                          <IoMailOutline className="h-5 w-5 text-zinc-400" />
+                        <div className="flex items-center gap-2 text-base text-slate-700">
+                          <IoMailOutline className="h-5 w-5 text-slate-400" />
                           <span className="break-all">{student?.email}</span>
                         </div>
                       )}
@@ -352,32 +610,111 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                 </div>
               </div>
 
+              <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
+                      Родители
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-500">
+                      Явная привязка родителя к ученику
+                    </p>
+                  </div>
+                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-600">
+                    {parentLinks.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {parentLinks.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm font-semibold text-slate-500">
+                      Родители пока не привязаны
+                    </div>
+                  ) : (
+                    parentLinks.map((link) => (
+                      <div
+                        key={link.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold text-slate-950">
+                            {link.parent.last_name} {link.parent.first_name}{" "}
+                            {link.parent.middle_name}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-medium text-slate-500">
+                            {link.parent.email}
+                            {link.relationship ? ` · ${link.relationship}` : ""}
+                          </p>
+                        </div>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDetachParent(link.parent_id)}
+                            disabled={isParentActionLoading}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Отвязать родителя"
+                          >
+                            <IoTrashOutline className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <div className="mt-4 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={openAttachParentModal}
+                      disabled={isParentActionLoading}
+                      className="button-secondary h-12 w-full px-3 text-sm"
+                    >
+                      <IoSearchOutline className="h-5 w-5" />
+                      Привязать
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedParentCredentials(null);
+                        setIsCreateParentModalOpen(true);
+                      }}
+                      disabled={isParentActionLoading}
+                      className="button-secondary h-12 w-full px-3 text-sm"
+                    >
+                      <IoAddOutline className="h-5 w-5" />
+                      Создать
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-zinc-950">
+                  <h3 className="text-base font-extrabold text-slate-950">
                     История замечаний
                   </h3>
-                  <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-600">
+                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-600">
                     {history.length}
                   </span>
                 </div>
 
                 {history.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-zinc-300 p-5 text-center text-sm font-medium text-zinc-500">
+                  <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-base font-medium text-slate-500">
                     Пока нет замечаний
                   </div>
                 ) : (
-                  <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
-                    {history.map((item) => (
+                  <div className="space-y-3">
+                    {history.slice(0, 2).map((item) => (
                       <div
                         key={item.id}
-                        className="rounded-xl border border-zinc-200 bg-white p-4"
+                        className="rounded-lg border border-slate-200 bg-white p-4"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <p className="font-bold text-zinc-950">
+                          <p className="font-bold text-slate-950">
                             {item.subject}
                           </p>
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-zinc-400">
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium text-slate-400">
                             <IoTimeOutline className="h-4 w-4" />
                             {new Date(item.created_at).toLocaleDateString(
                               "ru-RU",
@@ -385,93 +722,91 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                           </span>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span
-                            className={[
-                              "rounded-lg px-2.5 py-1 text-xs font-semibold",
-                              getSeverityTone(item.severity),
-                            ].join(" ")}
-                          >
-                            {getSeverityLabel(item.severity)}
+                          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
+                            {item.reasons[0]}
                           </span>
-                          {item.reasons.map((reason) => (
-                            <span
-                              key={reason}
-                              className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700"
-                            >
-                              {reason}
+                          {item.reasons.length > 1 && (
+                            <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-500">
+                              +{item.reasons.length - 1}
                             </span>
-                          ))}
+                          )}
                         </div>
                         {item.comment && (
-                          <p className="mt-3 text-sm leading-6 text-zinc-600">
+                          <p className="mt-3 line-clamp-2 text-base leading-7 text-slate-600">
                             {item.comment}
                           </p>
                         )}
                       </div>
                     ))}
+                    <button
+                      type="button"
+                      onClick={() => setIsHistoryModalOpen(true)}
+                      className="button-secondary w-full"
+                    >
+                      Открыть всю историю
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
+            {canCreateBehavior && (
             <div className="p-5 sm:p-6">
-              <div className="mb-5 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600">
-                  <IoNotificationsOutline className="h-5 w-5" />
-                </span>
+              <div className="mb-5">
                 <div>
-                  <h3 className="font-bold text-zinc-950">
-                    Отправить уведомление
-                  </h3>
-                  <p className="mt-1 text-sm text-zinc-500">
-                    Выбери предмет и одну или несколько причин.
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                    <h3 className="text-lg font-extrabold text-slate-950">
+                      Зафиксировать замечание
+                    </h3>
+                  </div>
+                  <p className="mt-1 text-base text-slate-500">
+                    Выберите причину. Урок берётся из назначения учителя.
                   </p>
                 </div>
               </div>
 
               <div className="grid gap-4">
-                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                  Уровень
-                  <select
-                    value={severity}
-                    onChange={(e) =>
-                      setSeverity(e.target.value as BehaviorSeverity)
-                    }
-                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                  >
-                    {severityOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                  Предмет
-                  <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                  >
-                    <option value="">Выберите предмет</option>
-                    {subjects.map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
-                      </option>
-                    ))}
-                  </select>
+                <label className="grid gap-2 text-base font-bold text-slate-700">
+                  Урок
+                  {user?.role === "teacher" ? (
+                    <>
+                      <input
+                        readOnly
+                        value={subject || "Не назначен"}
+                        className="field cursor-default bg-slate-100 text-slate-700"
+                      />
+                      {availableSubjects.length === 0 && (
+                        <span className="text-sm font-medium text-red-500">
+                          Для этого класса вам не назначен предмет.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <select
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="field"
+                    >
+                      <option value="">Выберите предмет</option>
+                      {availableSubjects.map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </label>
 
                 <div>
-                  <p className="mb-2 text-sm font-semibold text-zinc-700">
+                  <p className="mb-2 text-base font-bold text-slate-700">
                     Причина
                   </p>
-                  <div className="grid max-h-64 gap-2 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
+                  <div className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
                     {reasons.map((reason) => (
                       <label
                         key={reason}
-                        className="flex min-h-11 items-center gap-3 rounded-lg bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-cyan-50"
+                        className="flex min-h-14 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-700 transition hover:bg-blue-50"
                       >
                         <input
                           type="checkbox"
@@ -483,7 +818,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                                 : [...prev, reason],
                             );
                           }}
-                          className="h-4 w-4 rounded border-zinc-300 text-cyan-600 focus:ring-cyan-500"
+                          className="h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
                         />
                         <span>{reason}</span>
                       </label>
@@ -491,32 +826,413 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                   </div>
                 </div>
 
-                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                <label className="grid gap-2 text-base font-bold text-slate-700">
                   Комментарий
                   <textarea
                     value={comment}
                     onChange={(e) => setComment(e.target.value.slice(0, 150))}
                     maxLength={150}
                     placeholder="Дополнительные детали для родителя"
-                    className="min-h-28 resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                    className="min-h-28 resize-none rounded-lg border border-slate-300 px-3 py-3 text-base font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
-                  <span className="text-xs font-medium text-zinc-400">
+                  <span className="text-sm font-medium text-slate-400">
                     {comment.length}/150
                   </span>
+                </label>
+
+                <label className="grid cursor-pointer gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-base font-bold text-slate-700 transition hover:border-blue-400 hover:bg-blue-50">
+                  <span className="flex items-center gap-2">
+                    <IoImageOutline className="h-5 w-5" />
+                    Фото к замечанию
+                  </span>
+                  <span className="text-sm font-medium text-slate-500">
+                    {photo ? photo.name : "JPG, PNG или WEBP, необязательно"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(event) =>
+                      setPhoto(event.target.files?.[0] ?? null)
+                    }
+                  />
                 </label>
 
                 <button
                   disabled={!subject || selectedReasons.length === 0 || loading}
                   onClick={handleSend}
-                  className="h-12 rounded-lg bg-red-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 active:scale-[0.98]"
+                  className="button-primary w-full"
                 >
-                  {loading ? "Отправка..." : "Отправить уведомление"}
+                  {loading ? "Сохраняем..." : "Сохранить замечание"}
                 </button>
               </div>
             </div>
+            )}
           </div>
         )}
       </motion.div>
+
+      {isAttachParentModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          onClick={closeAttachParentModal}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.18 }}
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/30"
+          >
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
+                  Привязка родителя
+                </p>
+                <h3 className="mt-1 text-xl font-extrabold text-slate-950">
+                  Найти существующего родителя
+                </h3>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
+                  Список ограничен по высоте, поэтому даже десятки родителей не
+                  растянут карточку ученика.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAttachParentModal}
+                disabled={isParentActionLoading}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Закрыть"
+              >
+                <IoClose className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 border-b border-slate-200 p-5 sm:grid-cols-[1fr_13rem]">
+              <label className="grid gap-2 text-sm font-bold text-slate-600">
+                Поиск
+                <span className="relative">
+                  <IoSearchOutline className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={parentSearch}
+                    onChange={(event) => setParentSearch(event.target.value)}
+                    placeholder="ФИО или email"
+                    className="field w-full pl-10"
+                    autoFocus
+                  />
+                </span>
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-slate-600">
+                Кем приходится
+                <input
+                  value={parentRelationship}
+                  onChange={(event) => setParentRelationship(event.target.value)}
+                  placeholder="Мама, папа, опекун"
+                  className="field w-full"
+                />
+              </label>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {availableParents.length === 0 ? (
+                <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center">
+                  <IoSearchOutline className="h-8 w-8 text-slate-400" />
+                  <p className="mt-3 text-base font-extrabold text-slate-950">
+                    Родители не найдены
+                  </p>
+                  <p className="mt-1 max-w-md text-sm font-medium leading-6 text-slate-500">
+                    Попробуйте изменить запрос или создайте нового родителя.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {availableParents.map((parent) => (
+                    <button
+                      key={parent.id}
+                      type="button"
+                      onClick={() => handleAttachParent(parent.id)}
+                      disabled={isParentActionLoading}
+                      className="flex min-h-16 w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-base font-extrabold text-slate-950">
+                          {parent.last_name} {parent.first_name}{" "}
+                          {parent.middle_name}
+                        </span>
+                        <span className="mt-1 block truncate text-sm font-medium text-slate-500">
+                          {parent.email}
+                        </span>
+                      </span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+                        <IoAddOutline className="h-5 w-5" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedParentCredentials(null);
+                  setIsCreateParentModalOpen(true);
+                  setIsAttachParentModalOpen(false);
+                }}
+                className="button-secondary"
+              >
+                <IoAddOutline className="h-5 w-5" />
+                Создать нового родителя
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {isHistoryModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          onClick={() => setIsHistoryModalOpen(false)}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.18 }}
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[calc(100vh-3rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/30"
+          >
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
+                  История замечаний
+                </p>
+                <h3 className="mt-1 text-xl font-extrabold text-slate-950">
+                  {student?.last_name} {student?.first_name}
+                </h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Всего записей: {history.length}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Закрыть"
+              >
+                <IoClose className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <div className="grid gap-3">
+                {history.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-slate-200 bg-white p-4"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <p className="text-lg font-extrabold text-slate-950">
+                        {item.subject}
+                      </p>
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium text-slate-400">
+                        <IoTimeOutline className="h-4 w-4" />
+                        {new Date(item.created_at).toLocaleDateString("ru-RU")}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.reasons.map((reason) => (
+                        <span
+                          key={reason}
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                        >
+                          {reason}
+                        </span>
+                      ))}
+                    </div>
+                    {item.comment && (
+                      <p className="mt-3 text-base leading-7 text-slate-600">
+                        {item.comment}
+                      </p>
+                    )}
+                    {item.photo_url && !brokenPhotoIds.has(item.id) && (
+                      <a
+                        href={getUploadUrl(item.photo_url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 block overflow-hidden rounded-lg border border-slate-200"
+                      >
+                        <img
+                          src={getUploadUrl(item.photo_url)}
+                          alt="Фото к замечанию"
+                          onError={() =>
+                            setBrokenPhotoIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(item.id);
+                              return next;
+                            })
+                          }
+                          className="max-h-80 w-full object-cover"
+                        />
+                      </a>
+                    )}
+                    {item.photo_url && brokenPhotoIds.has(item.id) && (
+                      <div className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500">
+                        Фото было прикреплено, но файл недоступен.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {isCreateParentModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          onClick={closeCreateParentModal}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.18 }}
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/30"
+          >
+            {!createdParentCredentials ? (
+              <>
+                <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
+                      Новый родитель
+                    </p>
+                    <h3 className="mt-1 text-xl font-extrabold text-slate-950">
+                      Создать и привязать
+                    </h3>
+                    <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
+                      Пароль будет создан автоматически после сохранения.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeCreateParentModal}
+                    disabled={isParentActionLoading}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Закрыть"
+                  >
+                    <IoClose className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="grid gap-3 p-5 sm:grid-cols-2">
+                  {[
+                    ["last_name", "Фамилия"],
+                    ["first_name", "Имя"],
+                    ["middle_name", "Отчество"],
+                    ["email", "Email"],
+                    ["relationship", "Кем приходится"],
+                  ].map(([field, label]) => (
+                    <label
+                      key={field}
+                      className={[
+                        "grid gap-2 text-sm font-bold text-slate-600",
+                        field === "relationship" ? "sm:col-span-2" : "",
+                      ].join(" ")}
+                    >
+                      {label}
+                      <input
+                        value={
+                          newParentForm[field as keyof typeof newParentForm]
+                        }
+                        onChange={(event) =>
+                          setNewParentForm((prev) => ({
+                            ...prev,
+                            [field]: event.target.value,
+                          }))
+                        }
+                        placeholder={label}
+                        className="field w-full"
+                      />
+                    </label>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleCreateAndAttachParent}
+                    disabled={isParentActionLoading}
+                    className="button-primary sm:col-span-2"
+                  >
+                    <IoAddOutline className="h-5 w-5" />
+                    {isParentActionLoading
+                      ? "Создаем..."
+                      : "Создать и привязать"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="border-b border-slate-200 px-5 py-5 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                    <IoCheckmarkCircleOutline className="h-9 w-9" />
+                  </div>
+                  <h3 className="mt-3 text-2xl font-extrabold text-slate-950">
+                    Родитель создан
+                  </h3>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                    Скопируйте email и пароль и отправьте родителю. После
+                    закрытия этого окна пароль больше нельзя будет посмотреть.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 p-5">
+                  {[
+                    ["Email", createdParentCredentials.email],
+                    ["Пароль", createdParentCredentials.password],
+                  ].map(([label, value]) => (
+                    <label
+                      key={label}
+                      className="grid gap-2 text-sm font-bold text-slate-600"
+                    >
+                      {label}
+                      <span className="relative block">
+                        <input
+                          readOnly
+                          value={value}
+                          className="field w-full pr-12"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => copyValue(value, label)}
+                          className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-blue-700"
+                          title={`Скопировать ${label.toLowerCase()}`}
+                        >
+                          <IoCopyOutline className="h-5 w-5" />
+                        </button>
+                      </span>
+                    </label>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={closeCreateParentModal}
+                    className="button-primary mt-2 w-full"
+                  >
+                    Готово
+                  </button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

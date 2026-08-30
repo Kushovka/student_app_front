@@ -156,39 +156,41 @@ const ClassPage = () => {
   });
 
   return (
-    <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <section className="min-h-[calc(100vh-4rem)]">
+      <div className="page-shell">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <button
               onClick={() => navigate(`/grade/${grade}`)}
-              className="mb-4 inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+              className="button-secondary mb-4"
             >
               <IoArrowBackOutline className="h-5 w-5" />
               К буквам класса
             </button>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-700">
-              Список учеников
-            </p>
-            <h1 className="mt-2 text-3xl font-bold text-zinc-950 sm:text-4xl">
-              {grade}
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+              Класс {grade}
               {letter}
+            </p>
+            <h1 className="mt-3 text-3xl font-extrabold text-slate-950 dark:text-white">
+              {grade}
+              {letter} класс
             </h1>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-2 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            <div className="flex h-12 min-w-40 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-slate-800 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100">
+              <IoPeopleOutline className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+              <span className="text-base font-bold text-slate-500 dark:text-slate-400">
                 Учеников
-              </p>
-              <p className="text-2xl font-bold text-zinc-950">
+              </span>
+              <span className="text-base font-extrabold text-slate-950 dark:text-white">
                 {students.length}
-              </p>
+              </span>
             </div>
 
             {isAdmin && (
               <>
-                <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50">
+                <label className="button-secondary cursor-pointer">
                   <IoCloudUploadOutline className="h-5 w-5" />
                   {isImporting ? "Импорт..." : "Импорт"}
                   <input
@@ -206,7 +208,7 @@ const ClassPage = () => {
                   type="button"
                   onClick={() => handleStudentExport("xlsx")}
                   disabled={isStudentExporting}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="button-secondary"
                 >
                   <IoDownloadOutline className="h-5 w-5" />
                   Список
@@ -214,7 +216,7 @@ const ClassPage = () => {
                 <button
                   type="button"
                   onClick={() => setIsExportOpen(true)}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.99]"
+                  className="button-secondary"
                 >
                   <IoDownloadOutline className="h-5 w-5" />
                   Замечания
@@ -223,12 +225,12 @@ const ClassPage = () => {
             )}
 
             <label className="relative block min-w-0 sm:w-80">
-              <IoSearchOutline className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+              <IoSearchOutline className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={isAdmin ? "Поиск по ФИО или email" : "Поиск по ФИО"}
-                className="h-12 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-3 text-sm shadow-sm outline-none transition placeholder:text-zinc-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                className="field w-full pl-12"
               />
             </label>
           </div>
@@ -236,7 +238,7 @@ const ClassPage = () => {
 
         {isAdmin && isExportOpen && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
             onClick={() => {
               if (!isExporting) setIsExportOpen(false);
             }}
@@ -244,15 +246,15 @@ const ClassPage = () => {
             <div
               role="dialog"
               aria-modal="true"
-              className="w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl"
+              className="w-full max-w-3xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
                     Отчёт по нарушениям
                   </p>
-                  <h2 className="mt-1 text-lg font-bold text-zinc-950">
+                  <h2 className="mt-1 text-xl font-extrabold text-slate-950">
                     {grade}
                     {letter}
                   </h2>
@@ -262,7 +264,7 @@ const ClassPage = () => {
                   type="button"
                   onClick={() => setIsExportOpen(false)}
                   disabled={isExporting}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                   aria-label="Закрыть"
                 >
                   <IoClose className="h-5 w-5" />
@@ -272,29 +274,29 @@ const ClassPage = () => {
               <div className="p-5">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                    <span className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
                       С
                     </span>
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
-                      className="mt-2 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm outline-none transition focus:border-cyan-400"
+                      className="field mt-2 w-full"
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                    <span className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
                       По
                     </span>
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
-                      className="mt-2 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm outline-none transition focus:border-cyan-400"
+                      className="field mt-2 w-full"
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                    <span className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
                       Формат
                     </span>
                     <select
@@ -302,7 +304,7 @@ const ClassPage = () => {
                       onChange={(e) =>
                         setExportFormat(e.target.value as ReportFormat)
                       }
-                      className="mt-2 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm outline-none transition focus:border-cyan-400"
+                      className="field mt-2 w-full"
                     >
                       <option value="xlsx">xlsx</option>
                       <option value="docx">docx</option>
@@ -313,12 +315,12 @@ const ClassPage = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 border-t border-zinc-200 bg-zinc-50 px-5 py-4 sm:flex-row sm:justify-end">
+              <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setIsExportOpen(false)}
                   disabled={isExporting}
-                  className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="button-secondary"
                 >
                   Отмена
                 </button>
@@ -326,7 +328,7 @@ const ClassPage = () => {
                   type="button"
                   onClick={handleExport}
                   disabled={isExporting || !dateFrom || !dateTo}
-                  className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="button-primary"
                 >
                   {isExporting ? "Готовим..." : "Скачать"}
                 </button>
@@ -336,24 +338,24 @@ const ClassPage = () => {
         )}
 
         {isLoading && (
-          <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm font-medium text-zinc-500 shadow-sm">
+          <div className="surface p-8 text-center text-base font-medium text-slate-500">
             Загружаем учеников...
           </div>
         )}
 
         {!isLoading && error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm font-medium text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-base font-medium text-red-700">
             {error}
           </div>
         )}
 
         {!isLoading && !error && students.length === 0 && (
-          <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-white/70 p-8 text-center">
-            <IoPeopleOutline className="h-10 w-10 text-zinc-400" />
-            <h2 className="mt-4 text-lg font-bold text-zinc-950">
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
+            <IoPeopleOutline className="h-10 w-10 text-slate-400" />
+            <h2 className="mt-4 text-xl font-bold text-slate-950">
               В классе пока нет учеников
             </h2>
-            <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
+            <p className="mt-2 max-w-md text-base leading-7 text-slate-500">
               Добавь ученика через кнопку в правом нижнем углу или импортируй
               CSV/XLSX с колонками last_name, first_name, middle_name, email,
               grade, class_letter.
@@ -362,10 +364,10 @@ const ClassPage = () => {
         )}
 
         {!isLoading && !error && students.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50 text-xs font-bold uppercase tracking-[0.08em] text-zinc-500">
+              <table className="w-full min-w-[720px] text-left text-base">
+                <thead className="border-b border-slate-200 bg-slate-50 text-sm font-bold uppercase tracking-[0.06em] text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">
                   <tr>
                     <th className="w-16 px-5 py-4">№</th>
                     <th className="px-5 py-4">Ученик</th>
@@ -373,29 +375,29 @@ const ClassPage = () => {
                     <th className="px-5 py-4">Класс</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-slate-100">
                   {filteredStudents.map((student, index) => (
                     <tr
                       onClick={() => setSelectedId(student.id)}
                       key={student.id}
-                      className="cursor-pointer transition hover:bg-cyan-50/60"
+                      className="cursor-pointer transition hover:bg-blue-50 dark:hover:bg-blue-500/10"
                     >
-                      <td className="px-5 py-4 font-medium text-zinc-400">
+                      <td className="px-5 py-5 font-medium text-slate-400">
                         {index + 1}
                       </td>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-zinc-950">
+                      <td className="px-5 py-5">
+                        <p className="font-bold text-slate-950 dark:text-white">
                           {student.last_name} {student.first_name}{" "}
                           {student.middle_name}
                         </p>
                       </td>
                       {isAdmin && (
-                        <td className="px-5 py-4 text-zinc-600">
+                        <td className="px-5 py-5 text-slate-600">
                           {student.email}
                         </td>
                       )}
-                      <td className="px-5 py-4">
-                        <span className="inline-flex rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-700">
+                      <td className="px-5 py-5">
+                        <span className="inline-flex rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-700 dark:bg-white/[0.06] dark:text-slate-200">
                           {student.grade}
                           {student.class_letter}
                         </span>
@@ -407,7 +409,7 @@ const ClassPage = () => {
             </div>
 
             {filteredStudents.length === 0 && (
-              <div className="border-t border-zinc-100 px-5 py-8 text-center text-sm font-medium text-zinc-500">
+              <div className="border-t border-slate-100 px-5 py-8 text-center text-base font-medium text-slate-500">
                 По запросу ничего не найдено
               </div>
             )}

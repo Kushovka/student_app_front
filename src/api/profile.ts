@@ -14,7 +14,8 @@ export interface AuthUser {
   middle_name: string;
   email: string;
   school_id: string;
-  role?: "admin" | "teacher";
+  role?: "superadmin" | "admin" | "teacher" | "parent";
+  max_connected?: boolean;
   school?: SchoolInfo;
 }
 
@@ -35,3 +36,22 @@ export const updateMe = async (payload: UpdateMePayload) => {
   return data;
 };
 
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+export const changePassword = async (payload: ChangePasswordPayload) => {
+  await api.patch("/profile/me/password", payload);
+};
+
+export interface MaxLinkCodeResponse {
+  code: string;
+  bot_username?: string | null;
+  connected: boolean;
+}
+
+export const getMaxLinkCode = async () => {
+  const { data } = await api.get<MaxLinkCodeResponse>("/max/link-code");
+  return data;
+};
