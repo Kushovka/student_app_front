@@ -7,7 +7,6 @@ export interface BehaviorCreate {
 
 export interface BehaviorRecord {
   id: string;
-  severity?: "green" | "yellow" | "red";
   subject: string;
   reasons: string[];
   comment?: string;

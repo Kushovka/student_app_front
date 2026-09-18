@@ -12,9 +12,12 @@ export interface AuthUser {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
   school_id: string;
   role?: "superadmin" | "admin" | "teacher" | "parent";
+  homeroom_grade?: number | null;
+  homeroom_class_letter?: string | null;
+  is_class_teacher?: boolean;
   max_connected?: boolean;
   school?: SchoolInfo;
 }
@@ -23,7 +26,7 @@ export interface UpdateMePayload {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
 }
 
 export const getMe = async () => {

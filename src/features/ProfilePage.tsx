@@ -45,7 +45,7 @@ const ProfilePage = () => {
     first_name: "",
     last_name: "",
     middle_name: "",
-    email: "",
+    login: "",
   });
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
@@ -59,7 +59,7 @@ const ProfilePage = () => {
       first_name: user.first_name,
       last_name: user.last_name,
       middle_name: user.middle_name,
-      email: user.email,
+      login: user.login,
     });
   };
 
@@ -69,6 +69,20 @@ const ProfilePage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isUserLoading, user?.id]);
+
+  useEffect(() => {
+    if (isUserLoading || isEditing || isPasswordModalOpen) return;
+
+    const refreshId = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshMe({ silent: true });
+    }, 3_000);
+
+    return () => window.clearInterval(refreshId);
+  }, [isEditing, isPasswordModalOpen, isUserLoading, refreshMe]);
+
+  useEffect(() => {
+    if (user?.max_connected) setMaxLink(null);
+  }, [user?.max_connected]);
 
   const startEditing = () => {
     resetFormFromUser();
@@ -245,7 +259,7 @@ const ProfilePage = () => {
                     {user.last_name} {user.first_name} {user.middle_name}
                   </div>
                   <div className="mt-1 truncate text-sm font-semibold text-zinc-600">
-                    {user.email}
+                    {user.login}
                   </div>
                 </div>
               </div>
@@ -259,6 +273,73 @@ const ProfilePage = () => {
                     {formatRole(user.role)}
                   </div>
                 </div>
+
+                {(user.role === "parent" || user.is_class_teacher) && (
+                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <IoChatbubbleEllipsesOutline className="h-4 w-4 text-cyan-700" />
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                          Уведомления в MAX
+                        </div>
+                      </div>
+                      {user.max_connected && (
+                        <span className="text-sm font-bold text-emerald-700">
+                          Подключено
+                        </span>
+                      )}
+                    </div>
+
+                    {!user.max_connected && (
+                      <div className="mt-3">
+                        {maxLink ? (
+                          <div className="grid gap-3">
+                            <p className="text-sm font-medium leading-5 text-zinc-600">
+                              Отправьте боту эту команду:
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex min-h-10 items-center rounded-lg border border-zinc-200 bg-white px-3 font-mono text-sm font-bold text-zinc-950">
+                                /start {maxLink.code}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={copyMaxCommand}
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                              >
+                                <IoCopyOutline className="h-4 w-4" />
+                                Скопировать команду
+                              </button>
+                            </div>
+                            {maxLink.bot_username && (
+                              <a
+                                href={`https://max.ru/${maxLink.bot_username}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="w-fit text-sm font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-4 transition hover:text-cyan-900"
+                              >
+                                Открыть @{maxLink.bot_username} в MAX
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3">
+                            <p className="text-sm font-medium leading-5 text-zinc-600">
+                              Подключите бота, чтобы получать уведомления о замечаниях.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={loadMaxLinkCode}
+                              disabled={isMaxLoading}
+                              className="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-950 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {isMaxLoading ? "Получаем..." : "Подключить MAX"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -371,24 +452,25 @@ const ProfilePage = () => {
                   </div>
                   <div className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="text-sm font-medium text-zinc-600">
-                      Email
+                      Логин
                     </div>
                     <div className="break-all text-sm font-semibold text-zinc-900">
                       {isEditing ? (
                         <input
-                          type="email"
-                          value={form.email}
+                          type="text"
+                          autoComplete="username"
+                          value={form.login}
                           onChange={(e) =>
                             setForm((prev) => ({
                               ...prev,
-                              email: e.target.value,
+                              login: e.target.value,
                             }))
                           }
                           disabled={isSaving}
                           className="h-9 w-72 max-w-full rounded-lg border border-zinc-200 bg-white px-3 text-right text-sm font-semibold text-zinc-900 shadow-sm outline-none transition focus:border-cyan-300 disabled:cursor-not-allowed disabled:bg-zinc-50"
                         />
                       ) : (
-                        user.email
+                        user.login
                       )}
                     </div>
                   </div>
@@ -399,7 +481,7 @@ const ProfilePage = () => {
                     <button
                       type="button"
                       onClick={() => setIsPasswordModalOpen(true)}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
                     >
                       <IoKeyOutline className="h-4 w-4" />
                       Изменить пароль
@@ -409,78 +491,6 @@ const ProfilePage = () => {
               </div>
             </div>
 
-            {user.role === "parent" && (
-              <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm lg:col-span-3">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex gap-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                      <IoChatbubbleEllipsesOutline className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-zinc-950">
-                        Уведомления в MAX
-                      </h2>
-                      <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-zinc-500">
-                        Подключите бота MAX, чтобы получать сообщения о новых
-                        замечаниях дополнительно к почте.
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={[
-                      "inline-flex h-9 items-center rounded-lg px-3 text-sm font-bold",
-                      user.max_connected
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-zinc-100 text-zinc-600",
-                    ].join(" ")}
-                  >
-                    {user.max_connected ? "Подключено" : "Не подключено"}
-                  </span>
-                </div>
-
-                <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                  {maxLink ? (
-                    <div className="grid gap-3">
-                      <div className="text-sm font-semibold text-zinc-600">
-                        Отправьте боту MAX эту команду:
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <div className="flex min-h-11 flex-1 items-center rounded-lg border border-zinc-200 bg-white px-3 font-mono text-sm font-bold text-zinc-950">
-                          /start {maxLink.code}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={copyMaxCommand}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
-                        >
-                          <IoCopyOutline className="h-5 w-5" />
-                          Скопировать
-                        </button>
-                      </div>
-                      {maxLink.bot_username && (
-                        <div className="text-sm font-medium text-zinc-500">
-                          Бот: @{maxLink.bot_username}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm font-medium leading-6 text-zinc-500">
-                        Получите код подключения и отправьте его боту MAX.
-                      </div>
-                      <button
-                        type="button"
-                        onClick={loadMaxLinkCode}
-                        disabled={isMaxLoading}
-                        className="inline-flex h-11 items-center justify-center rounded-lg bg-zinc-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {isMaxLoading ? "Получаем..." : "Получить код"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

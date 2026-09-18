@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IoAdd,
   IoBarChartOutline,
@@ -6,11 +6,13 @@ import {
   IoBusinessOutline,
   IoChevronForwardOutline,
   IoLogOutOutline,
+  IoMenuOutline,
   IoNotificationsOutline,
   IoPersonCircleOutline,
   IoPeopleOutline,
   IoSearchOutline,
   IoSettingsOutline,
+  IoCloseOutline,
 } from "react-icons/io5";
 import {
   BrowserRouter,
@@ -22,6 +24,11 @@ import {
 } from "react-router";
 import { getMe, type AuthUser } from "./api/profile";
 import { createStudents, getStudents } from "./api/student";
+import {
+  getSystemUpdates,
+  markSystemUpdatesRead,
+  type SystemUpdate,
+} from "./api/systemUpdates";
 import AppLogo from "./components/AppLogo";
 import CreateStudentModal from "./components/CreateStudentModal";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -41,6 +48,8 @@ import TableGrades from "./features/TableGrades";
 import UsersPage from "./features/UsersPage";
 import type { StudentForm, StudentResponce } from "./types/student.type";
 import { clearAccessToken } from "./utils/authToken";
+import { notifyDataChanged } from "./utils/dataRefresh";
+import { formatRole } from "./utils/formatRole";
 
 const AppLayout = () => {
   const navigate = useNavigate();
@@ -55,25 +64,31 @@ const AppLayout = () => {
     null,
   );
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
+  const [systemUpdates, setSystemUpdates] = useState<SystemUpdate[]>([]);
+  const [unreadSystemUpdates, setUnreadSystemUpdates] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isNotificationsMounted, setIsNotificationsMounted] = useState(false);
+  const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const notificationAreaRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<StudentForm>({
     first_name: "",
     last_name: "",
     middle_name: "",
-    email: "",
     grade: "",
     class_letter: "",
   });
 
-  const refreshMe = async () => {
+  const refreshMe = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
-      setIsUserLoading(true);
+      if (!silent) setIsUserLoading(true);
       const data = await getMe();
       setUser(data);
     } catch {
       clearAccessToken();
       navigate("/login", { replace: true });
     } finally {
-      setIsUserLoading(false);
+      if (!silent) setIsUserLoading(false);
     }
   };
 
@@ -82,19 +97,100 @@ const AppLayout = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
-  const addStudent = async (parentEmail?: string) => {
+  useEffect(() => {
+    if (isUserLoading || !user) return;
+
+    let isActive = true;
+    const refreshSystemUpdates = async () => {
+      try {
+        const data = await getSystemUpdates();
+        if (!isActive) return;
+        setSystemUpdates(data.items);
+        setUnreadSystemUpdates(data.unread_count);
+      } catch {
+        // A notification check must not interrupt the user's current work.
+      }
+    };
+
+    refreshSystemUpdates();
+    const timer = window.setInterval(refreshSystemUpdates, 15_000);
+    return () => {
+      isActive = false;
+      window.clearInterval(timer);
+    };
+  }, [isUserLoading, user?.id]);
+
+  useEffect(() => {
+    if (isNotificationsOpen) {
+      setIsNotificationsMounted(true);
+      const frame = window.requestAnimationFrame(() => {
+        setIsNotificationsVisible(true);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    setIsNotificationsVisible(false);
+    const timer = window.setTimeout(() => setIsNotificationsMounted(false), 160);
+    return () => window.clearTimeout(timer);
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+
+    const closeOnOutsidePress = (event: MouseEvent | TouchEvent) => {
+      if (!notificationAreaRef.current?.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsNotificationsOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsidePress);
+    document.addEventListener("touchstart", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePress);
+      document.removeEventListener("touchstart", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isNotificationsOpen]);
+
+  const toggleNotifications = async () => {
+    const willOpen = !isNotificationsOpen;
+    setIsNotificationsOpen(willOpen);
+
+    if (!willOpen || unreadSystemUpdates === 0) return;
+
+    try {
+      const data = await markSystemUpdatesRead();
+      setSystemUpdates(data.items);
+      setUnreadSystemUpdates(0);
+    } catch {
+      // The badge will be retried silently on the next background refresh.
+    }
+  };
+
+  const formatUpdateDate = (value: string) =>
+    new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(new Date(value));
+
+  const addStudent = async () => {
     try {
       const created = await createStudents({
         ...form,
-        email: parentEmail || form.email || "",
         grade: Number(form.grade),
       });
+
+      notifyDataChanged();
 
       setForm({
         first_name: "",
         last_name: "",
         middle_name: "",
-        email: "",
         grade: "",
         class_letter: "",
       });
@@ -116,12 +212,12 @@ const AppLayout = () => {
   const isSuperadmin = user?.role === "superadmin";
   const isUsersPage = location.pathname === "/users";
   const isClassesSection =
-    location.pathname === "/" || location.pathname.startsWith("/grade/");
+    location.pathname === "/" || /^\/grade\/[^/]+\/[^/]+$/.test(location.pathname);
   const showFloatingAction = isAdmin && (isUsersPage || isClassesSection);
   const navItems = isSuperadmin
     ? [
         { label: "Платформа", icon: IoBusinessOutline, path: "/platform" },
-        { label: "Dashboard", icon: IoBarChartOutline, path: "/dashboard" },
+        { label: "Сводка", icon: IoBarChartOutline, path: "/dashboard" },
         { label: "Профиль", icon: IoPersonCircleOutline, path: "/profile" },
         { label: "Настройки", icon: IoSettingsOutline, path: "/settings" },
       ]
@@ -135,7 +231,7 @@ const AppLayout = () => {
         { label: "Классы", icon: IoBookOutline, path: "/" },
         ...(isAdmin
           ? [
-              { label: "Dashboard", icon: IoBarChartOutline, path: "/dashboard" },
+              { label: "Сводка", icon: IoBarChartOutline, path: "/dashboard" },
               { label: "Пользователи", icon: IoPeopleOutline, path: "/users" },
             ]
           : []),
@@ -150,6 +246,21 @@ const AppLayout = () => {
 
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isMobileNavOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMobileNavOpen(false);
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isMobileNavOpen]);
 
   useEffect(() => {
     if (normalizedHeaderSearch.length < 2) {
@@ -256,13 +367,7 @@ const AppLayout = () => {
                   : `${user?.last_name ?? ""} ${user?.first_name ?? ""}`}
               </span>
               <span className="block truncate text-xs font-medium text-slate-400">
-                {user?.role === "admin"
-                  ? "Администратор"
-                  : user?.role === "superadmin"
-                    ? "Владелец платформы"
-                  : user?.role === "parent"
-                    ? "Родитель"
-                    : "Учитель"}
+                {formatRole(user?.role)}
               </span>
             </span>
             <IoChevronForwardOutline className="h-4 w-4 text-slate-400" />
@@ -270,21 +375,99 @@ const AppLayout = () => {
         </div>
       </aside>
 
+      {isMobileNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Меню навигации">
+          <button
+            type="button"
+            aria-label="Закрыть меню"
+            className="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"
+            onClick={() => setIsMobileNavOpen(false)}
+          />
+          <aside className="relative flex h-full w-[min(19rem,calc(100vw-3rem))] flex-col bg-[#071225] px-4 py-4 text-white shadow-2xl shadow-black/35">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/")}
+                className="flex min-w-0 items-center gap-3 rounded-xl px-1 py-1 text-left"
+              >
+                <AppLogo className="h-11 w-11 shrink-0" />
+                <span className="min-w-0 text-sm font-extrabold leading-5">
+                  Школьный<br />контроль
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label="Закрыть меню"
+                onClick={() => setIsMobileNavOpen(false)}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                <IoCloseOutline className="h-6 w-6" />
+              </button>
+            </div>
+
+            <nav className="mt-7 grid gap-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = isNavItemActive(item.path);
+                return (
+                  <button
+                    key={`mobile-${item.label}-${item.path}`}
+                    type="button"
+                    onClick={() => navigate(item.path)}
+                    className={[
+                      "flex h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold transition",
+                      isActive
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:bg-white/10 hover:text-white",
+                    ].join(" ")}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Тема</p>
+              <ThemeToggle />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              className="mt-auto flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-700 text-base font-extrabold">
+                {user?.first_name?.[0] ?? "А"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-extrabold">
+                  {isUserLoading ? "Загрузка..." : `${user?.last_name ?? ""} ${user?.first_name ?? ""}`}
+                </span>
+                <span className="block truncate text-xs font-medium text-slate-400">{formatRole(user?.role)}</span>
+              </span>
+              <IoChevronForwardOutline className="h-4 w-4 shrink-0 text-slate-400" />
+            </button>
+          </aside>
+        </div>
+      )}
+
       <div className="min-h-screen lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#071225]/94 text-white shadow-xl shadow-slate-950/10 backdrop-blur">
-          <div className="flex h-20 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-30 border-b border-slate-300 bg-white/95 text-slate-900 shadow-md shadow-slate-300/40 backdrop-blur dark:border-white/10 dark:bg-[#071225] dark:text-white dark:shadow-xl dark:shadow-slate-950/10">
+          <div className="flex h-16 items-center justify-between gap-2 px-3 sm:h-20 sm:gap-3 sm:px-6 lg:px-8">
             <button
               onClick={() => navigate("/")}
-              className="flex items-center gap-3 rounded-lg px-1 py-1 text-left transition hover:opacity-85 lg:hidden"
+              className="hidden items-center gap-3 rounded-lg px-1 py-1 text-left transition hover:opacity-85 sm:flex lg:hidden"
             >
               <span className="flex h-12 w-12 items-center justify-center">
                 <AppLogo className="h-12 w-12" />
               </span>
               <span>
-                <span className="block text-base font-extrabold leading-5 text-white">
+                <span className="block text-base font-extrabold leading-5 text-slate-950 dark:text-white">
                   Школьный контроль
                 </span>
-                <span className="block text-sm font-medium text-slate-400">
+                <span className="block text-sm font-medium text-slate-600 dark:text-slate-400">
                   Классы, ученики, замечания
                 </span>
               </span>
@@ -309,14 +492,14 @@ const AppLayout = () => {
                         setIsHeaderSearchOpen(false);
                       }
                     }}
-                    placeholder="Поиск ученика по ФИО или email"
-                    className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.06] pl-12 pr-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white/[0.1] focus:ring-4 focus:ring-blue-500/20"
+                    placeholder="Поиск ученика по ФИО"
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-3 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-500 shadow-sm shadow-slate-200/70 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/20 dark:border-white/10 dark:bg-white/[0.06] dark:text-white dark:placeholder:text-slate-400 dark:shadow-none dark:focus:bg-white/[0.1]"
                   />
                 </label>
 
               {isHeaderSearchOpen && normalizedHeaderSearch.length >= 2 && (
-                <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-white/10 bg-[#0f1b2d] text-white shadow-2xl shadow-black/30">
-                  <div className="border-b border-white/10 px-4 py-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">
+                <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-300 bg-white text-slate-950 shadow-2xl shadow-slate-400/30 dark:border-white/10 dark:bg-[#0f1b2d] dark:text-white dark:shadow-black/30">
+                  <div className="border-b border-slate-200 px-4 py-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-600 dark:border-white/10 dark:text-slate-400">
                     {isHeaderSearching
                       ? "Ищем..."
                       : headerSearchError
@@ -333,7 +516,7 @@ const AppLayout = () => {
                   {!isHeaderSearching &&
                     !headerSearchError &&
                     headerResults.length === 0 && (
-                      <div className="px-4 py-5 text-sm font-semibold text-slate-400">
+                      <div className="px-4 py-5 text-sm font-semibold text-slate-600 dark:text-slate-400">
                         Ученики не найдены.
                       </div>
                     )}
@@ -345,20 +528,19 @@ const AppLayout = () => {
                         type="button"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => openStudentClass(student)}
-                        className="flex w-full items-center gap-3 border-b border-white/5 px-4 py-3 text-left transition last:border-b-0 hover:bg-white/[0.06]"
+                        className="flex w-full items-center gap-3 border-b border-slate-200 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/[0.06]"
                       >
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-extrabold text-white">
                           {student.last_name[0]}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-extrabold text-white">
+                          <span className="block truncate text-sm font-extrabold text-slate-950 dark:text-white">
                             {student.last_name} {student.first_name}{" "}
                             {student.middle_name}
                           </span>
-                          <span className="mt-0.5 block truncate text-xs font-semibold text-slate-400">
+                          <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600 dark:text-slate-400">
                             {student.grade}
                             {student.class_letter} класс
-                            {isAdmin ? ` · ${student.email}` : ""}
                           </span>
                         </span>
                         <IoChevronForwardOutline className="h-4 w-4 text-slate-500" />
@@ -370,19 +552,90 @@ const AppLayout = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-2 sm:gap-3">
-              <ThemeToggle compact />
+            <div
+              className={`flex items-center gap-2 sm:gap-3${isSuperadmin ? " ml-auto" : ""}`}
+            >
               <button
                 type="button"
-                className="hidden h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.1] sm:flex"
-                title="Уведомления"
+                aria-label="Открыть меню"
+                aria-expanded={isMobileNavOpen}
+                onClick={() => setIsMobileNavOpen(true)}
+                className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm shadow-slate-200/70 transition hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-blue-500/30 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-200 dark:shadow-none dark:hover:bg-white/[0.1] dark:hover:text-white sm:hidden"
               >
-                <IoNotificationsOutline className="h-5 w-5" />
+                <IoMenuOutline className="h-6 w-6" />
               </button>
+              <div className="hidden sm:block">
+                <ThemeToggle compact />
+              </div>
+              <div ref={notificationAreaRef} className="relative">
+                <button
+                  type="button"
+                  onClick={toggleNotifications}
+                  aria-expanded={isNotificationsOpen}
+                  aria-label={
+                    unreadSystemUpdates > 0
+                      ? `Уведомления: ${unreadSystemUpdates} непрочитанных`
+                      : "Уведомления"
+                  }
+                  className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm shadow-slate-200/70 transition hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-blue-500/30 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-200 dark:shadow-none dark:hover:bg-white/[0.1] dark:hover:text-white"
+                  title="Уведомления"
+                >
+                  <IoNotificationsOutline className="h-5 w-5" />
+                  {unreadSystemUpdates > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#071225] bg-blue-500 px-1 text-[10px] font-extrabold text-white">
+                      {unreadSystemUpdates > 9 ? "9+" : unreadSystemUpdates}
+                    </span>
+                  )}
+                </button>
+
+                {isNotificationsMounted && (
+                  <div
+                    aria-hidden={!isNotificationsVisible}
+                    className={[
+                      "absolute right-0 top-full z-50 mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-300 bg-white text-slate-950 shadow-2xl shadow-slate-400/35 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-opacity dark:border-white/10 dark:bg-[#0f1b2d] dark:text-white dark:shadow-black/35",
+                      isNotificationsVisible
+                        ? "translate-y-0 scale-100 opacity-100"
+                        : "pointer-events-none -translate-y-2 scale-[0.98] opacity-0",
+                    ].join(" ")}
+                  >
+                    <div className="border-b border-slate-200 px-4 py-3 dark:border-white/10">
+                      <div className="text-sm font-extrabold">Обновления системы</div>
+                      <div className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                        Здесь появляются новые возможности и важные изменения.
+                      </div>
+                    </div>
+
+                    {systemUpdates.length === 0 ? (
+                      <div className="px-4 py-7 text-center text-sm font-semibold text-slate-600 dark:text-slate-400">
+                        Пока нет обновлений.
+                      </div>
+                    ) : (
+                      <div className="max-h-[min(28rem,calc(100vh-8rem))] overflow-y-auto">
+                        {systemUpdates.map((update) => (
+                          <article
+                            key={update.id}
+                            className="border-b border-slate-200 px-4 py-4 last:border-b-0 dark:border-white/10"
+                          >
+                            <div className="text-sm font-extrabold text-slate-950 dark:text-white">
+                              {update.title}
+                            </div>
+                            <div className="mt-1 text-xs font-semibold text-blue-300">
+                              {formatUpdateDate(update.published_at)}
+                            </div>
+                            <p className="mt-2 text-sm font-medium leading-6 text-slate-700 dark:text-slate-300">
+                              {update.description}
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={logout}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.1] sm:px-4"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm shadow-slate-200/70 transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-200 dark:shadow-none dark:hover:bg-white/[0.1] dark:hover:text-white sm:px-4"
               >
                 <IoLogOutOutline className="h-5 w-5" />
                 <span className="hidden sm:inline">Выйти</span>

@@ -33,7 +33,7 @@ const ThemeToggle = ({ compact = false }: ThemeToggleProps) => {
             type="button"
             onClick={() => setMode(option.mode)}
             className={[
-              "inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition",
+              "inline-flex h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition",
               isActive
                 ? "bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300"
                 : "text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white",

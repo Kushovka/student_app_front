@@ -8,24 +8,28 @@ import {
   IoPersonAddOutline,
   IoSearchOutline,
 } from "react-icons/io5";
-import { attachParentToStudent, getClassOptions } from "../api/student";
+import {
+  attachParentToStudent,
+  getClassOptions,
+  type ClassOption,
+} from "../api/student";
 import { createSchoolUser, getUsers, type UserListItem } from "../api/users";
 import type { StudentForm, StudentResponce } from "../types/student.type";
-import { gradeOptions, sortClassLetters } from "../utils/classOptions";
 import { toastBus } from "../utils/toastBus";
+import { notifyDataChanged } from "../utils/dataRefresh";
 
 interface Props {
   form: StudentForm;
   setForm: Dispatch<SetStateAction<StudentForm>>;
   setOpenCreateModal: (v: boolean) => void;
-  addStudent: (parentEmail?: string) => Promise<StudentResponce>;
+  addStudent: () => Promise<StudentResponce>;
 }
 
 const emptyParentForm = {
   first_name: "",
   last_name: "",
   middle_name: "",
-  email: "",
+  login: "",
   relationship: "Родитель",
 };
 
@@ -49,11 +53,23 @@ const CreateStudentModal = ({
   const [newParentForm, setNewParentForm] = useState(emptyParentForm);
   const [isCreatingParent, setIsCreatingParent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [createdCredentials, setCreatedCredentials] = useState<{
-    email: string;
+    login: string;
     password: string;
   } | null>(null);
-  const [schoolLetters, setSchoolLetters] = useState<string[]>([]);
+  const gradeOptions = useMemo(
+    () => [...new Set(classes.map((item) => item.grade))].sort((a, b) => a - b),
+    [classes],
+  );
+  const classLetterOptions = useMemo(
+    () =>
+      classes
+        .filter((item) => item.grade === Number(form.grade))
+        .map((item) => item.class_letter)
+        .sort(),
+    [classes, form.grade],
+  );
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -63,10 +79,10 @@ const CreateStudentModal = ({
           getClassOptions(),
         ]);
         setParents(users.filter((user) => user.role === "parent"));
-        setSchoolLetters(sortClassLetters(classOptions.letters));
+        setClasses(classOptions.classes);
       } catch {
         setParents([]);
-        setSchoolLetters([]);
+        setClasses([]);
       }
     };
 
@@ -74,10 +90,17 @@ const CreateStudentModal = ({
   }, []);
 
   useEffect(() => {
-    if (!form.class_letter || schoolLetters.includes(form.class_letter)) return;
+    if (!form.class_letter || classLetterOptions.includes(form.class_letter)) {
+      return;
+    }
     updateField("class_letter", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.class_letter, schoolLetters]);
+  }, [classLetterOptions, form.class_letter]);
+
+  useEffect(() => {
+    if (!form.grade || gradeOptions.includes(Number(form.grade))) return;
+    setForm((prev) => ({ ...prev, grade: "", class_letter: "" }));
+  }, [form.grade, gradeOptions, setForm]);
 
   const filteredParents = useMemo(() => {
     const query = parentSearch.trim().toLowerCase();
@@ -89,7 +112,7 @@ const CreateStudentModal = ({
           parent.last_name,
           parent.first_name,
           parent.middle_name,
-          parent.email,
+          parent.login,
         ]
           .join(" ")
           .toLowerCase()
@@ -112,7 +135,6 @@ const CreateStudentModal = ({
       first_name: "",
       last_name: "",
       middle_name: "",
-      email: "",
       grade: "",
       class_letter: "",
     });
@@ -134,7 +156,7 @@ const CreateStudentModal = ({
       !form.middle_name.trim() ||
       !form.grade ||
       !form.class_letter ||
-      !schoolLetters.includes(form.class_letter)
+      !classLetterOptions.includes(form.class_letter)
     ) {
       toastBus.error("Заполните данные ученика.");
       return false;
@@ -149,9 +171,9 @@ const CreateStudentModal = ({
       if (
         !newParentForm.last_name.trim() ||
         !newParentForm.first_name.trim() ||
-        !newParentForm.email.trim()
+        !newParentForm.login.trim()
       ) {
-        toastBus.error("Заполните фамилию, имя и email родителя.");
+      toastBus.error("Заполните фамилию, имя и логин родителя.");
         return;
       }
     }
@@ -167,7 +189,7 @@ const CreateStudentModal = ({
           first_name: newParentForm.first_name.trim(),
           last_name: newParentForm.last_name.trim(),
           middle_name: newParentForm.middle_name.trim(),
-          email: newParentForm.email.trim(),
+          login: newParentForm.login.trim(),
           password: generatedPassword,
           role: "parent",
         });
@@ -185,9 +207,11 @@ const CreateStudentModal = ({
         );
       }
 
+      notifyDataChanged();
+
       if (isCreatingParent && parent) {
         setCreatedCredentials({
-          email: parent.email,
+          login: parent.login,
           password: generatedPassword,
         });
         resetStudentForm();
@@ -227,7 +251,7 @@ const CreateStudentModal = ({
           </div>
           <div className="grid gap-3 p-5">
             {[
-              ["Email", createdCredentials.email],
+              ["Логин", createdCredentials.login],
               ["Пароль", createdCredentials.password],
             ].map(([label, value]) => (
               <label key={label} className="grid gap-2 text-sm font-bold text-slate-600">
@@ -320,10 +344,15 @@ const CreateStudentModal = ({
               Класс
               <select
                 value={form.grade}
-                onChange={(e) => updateField("grade", e.target.value)}
+                onChange={(e) => {
+                  updateField("grade", e.target.value);
+                  updateField("class_letter", "");
+                }}
                 className="field"
               >
-                <option value="">Выберите класс</option>
+                <option value="">
+                  {gradeOptions.length ? "Выберите класс" : "Сначала создайте класс"}
+                </option>
                 {gradeOptions.map((grade) => (
                   <option key={grade} value={grade}>
                     {grade}
@@ -337,15 +366,13 @@ const CreateStudentModal = ({
               <select
                 value={form.class_letter}
                 onChange={(e) => updateField("class_letter", e.target.value)}
+                disabled={!form.grade}
                 className="field"
-                disabled={schoolLetters.length === 0}
               >
                 <option value="">
-                  {schoolLetters.length === 0
-                    ? "В школе пока нет букв"
-                    : "Выберите букву"}
+                  Выберите букву
                 </option>
-                {schoolLetters.map((letter) => (
+                {classLetterOptions.map((letter) => (
                   <option key={letter} value={letter}>
                     {letter}
                   </option>
@@ -405,7 +432,7 @@ const CreateStudentModal = ({
                         {selectedParent.middle_name}
                       </div>
                       <div className="mt-1 truncate text-sm font-medium text-slate-500">
-                        {selectedParent.email}
+                        {selectedParent.login}
                       </div>
                     </div>
                     <button
@@ -446,7 +473,7 @@ const CreateStudentModal = ({
                                 {parent.middle_name}
                               </span>
                               <span className="mt-1 block truncate text-sm font-medium text-slate-500">
-                                {parent.email}
+                                {parent.login}
                               </span>
                             </span>
                             <IoAddOutline className="h-5 w-5 shrink-0 text-blue-700" />
@@ -465,7 +492,7 @@ const CreateStudentModal = ({
                   ["last_name", "Фамилия"],
                   ["first_name", "Имя"],
                   ["middle_name", "Отчество"],
-                  ["email", "Email"],
+                  ["login", "Логин"],
                   ["relationship", "Кем приходится"],
                 ].map(([field, label]) => (
                   <input

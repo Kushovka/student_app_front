@@ -1,4 +1,4 @@
-export const gradeOptions = Array.from({ length: 11 }, (_, index) => index + 1);
+export const gradeOptions = [5, 6, 7, 8, 9];
 
 export const classLetterOptions = [
   "А",

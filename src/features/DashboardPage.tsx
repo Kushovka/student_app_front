@@ -3,7 +3,6 @@ import {
   IoArrowBackOutline,
   IoBarChartOutline,
   IoChevronForwardOutline,
-  IoMailOutline,
   IoPieChartOutline,
   IoSchoolOutline,
 } from "react-icons/io5";
@@ -16,9 +15,9 @@ import {
   type PlatformDashboardResponse,
   type PlatformSchoolDashboardResponse,
 } from "../api/reports";
-import { sendPendingDigests } from "../api/student";
 import { useAuth } from "../context/authContext";
 import { toastBus } from "../utils/toastBus";
+import { DATA_CHANGED_EVENT } from "../utils/dataRefresh";
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -32,7 +31,6 @@ const DashboardPage = () => {
     useState<PlatformSchoolDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSchoolLoading, setIsSchoolLoading] = useState(false);
-  const [isDigestSending, setIsDigestSending] = useState(false);
 
   const maxClassTotal = useMemo(
     () => Math.max(...(dashboard?.top_classes.map((item) => item.total) ?? [1])),
@@ -53,9 +51,9 @@ const DashboardPage = () => {
     [schoolDashboard],
   );
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       if (isSuperadmin) {
         const data = await getPlatformDashboard();
         setPlatformDashboard(data);
@@ -66,14 +64,23 @@ const DashboardPage = () => {
         setPlatformDashboard(null);
       }
     } catch {
-      toastBus.error("Не удалось загрузить дашборд.");
+      if (!silent) toastBus.error("Не удалось загрузить дашборд.");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDashboard();
+    const refreshId = window.setInterval(() => {
+      if (document.visibilityState === "visible") fetchDashboard(true);
+    }, 3_000);
+    const refreshOnDataChange = () => fetchDashboard(true);
+    window.addEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    return () => {
+      window.clearInterval(refreshId);
+      window.removeEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    };
   }, [isSuperadmin]);
 
   useEffect(() => {
@@ -96,18 +103,6 @@ const DashboardPage = () => {
     loadSchoolDashboard();
   }, [isSuperadmin, selectedSchoolId]);
 
-  const handleDigest = async () => {
-    try {
-      setIsDigestSending(true);
-      const result = await sendPendingDigests();
-      toastBus.success(`Сводка отправлена: ${result.sent_records} записей`);
-    } catch {
-      toastBus.error("Не удалось отправить сводку.");
-    } finally {
-      setIsDigestSending(false);
-    }
-  };
-
   return (
     <section className="min-h-[calc(100vh-4rem)]">
       <div className="page-shell">
@@ -121,44 +116,15 @@ const DashboardPage = () => {
               {isSuperadmin ? "Платформа" : "Администрирование"}
             </p>
             <h1 className="page-title mt-2">
-              {isSuperadmin ? "Статистика школ" : "Dashboard MVP"}
+              {isSuperadmin ? "Статистика школ" : "Сводка школы"}
             </h1>
           </div>
 
-          {!isSuperadmin && (
-            <div className="flex max-w-sm items-center gap-2">
-              <button
-                type="button"
-                onClick={handleDigest}
-                disabled={isDigestSending}
-                className="button-primary"
-              >
-                <IoMailOutline className="h-5 w-5" />
-                {isDigestSending
-                  ? "Отправляем..."
-                  : "Отправить сводку родителям"}
-              </button>
-              <span className="group relative inline-flex">
-                <button
-                  type="button"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-extrabold text-slate-500 transition hover:border-blue-400 hover:text-blue-700 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-blue-500"
-                  aria-label="Что значит отправить сводку"
-                  title="Отправляет родителям все новые замечания, которые еще ждут отправки, одним письмом."
-                >
-                  ?
-                </button>
-                <span className="pointer-events-none absolute right-0 top-11 z-20 w-72 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-5 text-slate-600 opacity-0 shadow-xl shadow-slate-900/10 transition group-hover:opacity-100 group-focus-within:opacity-100 dark:border-white/10 dark:bg-[#151515] dark:text-slate-300">
-                  Отправляет родителям все новые замечания, которые еще ждут
-                  отправки, одним письмом.
-                </span>
-              </span>
-            </div>
-          )}
         </div>
 
         {isLoading && (
           <div className="surface p-8 text-center text-base font-medium text-slate-500">
-            Загружаем dashboard...
+            Загружаем сводку...
           </div>
         )}
 
@@ -168,7 +134,7 @@ const DashboardPage = () => {
               <div className="surface p-5">
                 <div className="flex items-center gap-3">
                   <IoBarChartOutline className="h-6 w-6 text-blue-700" />
-                  <div className="text-base font-bold text-slate-500">За 7 дней</div>
+                  <div className="text-base font-bold text-slate-500">Замечаний за 7 дней</div>
                 </div>
                 <div className="mt-4 text-3xl font-extrabold text-slate-950 dark:text-white">
                   {dashboard.total_7_days}
@@ -177,7 +143,7 @@ const DashboardPage = () => {
               <div className="surface p-5">
                 <div className="flex items-center gap-3">
                   <IoBarChartOutline className="h-6 w-6 text-blue-700" />
-                  <div className="text-base font-bold text-slate-500">За 30 дней</div>
+                  <div className="text-base font-bold text-slate-500">Замечаний за 30 дней</div>
                 </div>
                 <div className="mt-4 text-3xl font-extrabold text-slate-950 dark:text-white">
                   {dashboard.total_30_days}
@@ -260,38 +226,35 @@ const DashboardPage = () => {
 
         {!isLoading && platformDashboard && (
           <div className="grid gap-5">
-            <section className="rounded-2xl border border-slate-200 bg-[#071225] p-6 text-white shadow-xl shadow-slate-900/10 dark:border-white/10">
+            <section className="border-b border-slate-200 pb-7 dark:rounded-2xl dark:border dark:border-white/10 dark:bg-[#071225] dark:p-6 dark:text-white dark:shadow-xl dark:shadow-slate-900/10">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-sm font-extrabold uppercase tracking-[0.12em] text-blue-300">
-                    Общая статистика
-                  </p>
-                  <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">
+                  <h2 className="text-2xl font-extrabold text-slate-950 dark:text-white sm:text-3xl">
                     Вся платформа
                   </h2>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3">
-                    <div className="text-sm font-bold text-slate-300">Школ</div>
-                    <div className="mt-1 text-3xl font-extrabold">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06] dark:shadow-none">
+                    <div className="text-sm font-bold text-slate-600 dark:text-slate-300">Школ</div>
+                    <div className="mt-1 text-3xl font-extrabold text-slate-950 dark:text-white">
                       {platformDashboard.total_schools}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3">
-                    <div className="text-sm font-bold text-slate-300">Учеников</div>
-                    <div className="mt-1 text-3xl font-extrabold">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06] dark:shadow-none">
+                    <div className="text-sm font-bold text-slate-600 dark:text-slate-300">Учеников</div>
+                    <div className="mt-1 text-3xl font-extrabold text-slate-950 dark:text-white">
                       {platformDashboard.total_students}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3">
-                    <div className="text-sm font-bold text-slate-300">За 30 дней</div>
-                    <div className="mt-1 text-3xl font-extrabold">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06] dark:shadow-none">
+                    <div className="text-sm font-bold text-slate-600 dark:text-slate-300">Замечаний за 30 дней</div>
+                    <div className="mt-1 text-3xl font-extrabold text-slate-950 dark:text-white">
                       {platformDashboard.total_30_days}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3">
-                    <div className="text-sm font-bold text-slate-300">Всего</div>
-                    <div className="mt-1 text-3xl font-extrabold">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06] dark:shadow-none">
+                    <div className="text-sm font-bold text-slate-600 dark:text-slate-300">Всего замечаний</div>
+                    <div className="mt-1 text-3xl font-extrabold text-slate-950 dark:text-white">
                       {platformDashboard.total_records}
                     </div>
                   </div>
@@ -345,7 +308,15 @@ const DashboardPage = () => {
                             isActive ? "text-blue-100" : "text-slate-500",
                           ].join(" ")}
                         >
-                          {school.students} учеников · {school.records_30_days} за 30 дней
+                          Учеников: {school.students}
+                        </span>
+                        <span
+                          className={[
+                            "mt-1 block text-sm font-bold",
+                            isActive ? "text-blue-100" : "text-slate-500",
+                          ].join(" ")}
+                        >
+                          Замечаний за 30 дней: {school.records_30_days}
                         </span>
                       </span>
                       <IoChevronForwardOutline className="h-7 w-7 shrink-0" />
@@ -388,7 +359,7 @@ const DashboardPage = () => {
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
-                      <div className="text-sm font-bold text-slate-500">Админы</div>
+                      <div className="text-sm font-bold text-slate-500">Администраторы</div>
                       <div className="mt-2 text-3xl font-extrabold">
                         {schoolDashboard.admins}
                       </div>
@@ -406,13 +377,13 @@ const DashboardPage = () => {
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
-                      <div className="text-sm font-bold text-slate-500">7 дней</div>
+                      <div className="text-sm font-bold text-slate-500">Замечаний за 7 дней</div>
                       <div className="mt-2 text-3xl font-extrabold">
                         {schoolDashboard.total_7_days}
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
-                      <div className="text-sm font-bold text-slate-500">Всего</div>
+                      <div className="text-sm font-bold text-slate-500">Всего замечаний</div>
                       <div className="mt-2 text-3xl font-extrabold">
                         {schoolDashboard.records_total}
                       </div>

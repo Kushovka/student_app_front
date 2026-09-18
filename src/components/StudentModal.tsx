@@ -10,7 +10,6 @@ import {
   IoSaveOutline,
   IoSearchOutline,
   IoTrashOutline,
-  IoMailOutline,
   IoPersonCircleOutline,
   IoTimeOutline,
 } from "react-icons/io5";
@@ -22,6 +21,7 @@ import {
   getAvailableParents,
   getBehaviorHistory,
   getClassOptions,
+  getStudentClassTeacher,
   getStudentById,
   getStudentParents,
   updateStudent,
@@ -35,10 +35,11 @@ import {
 } from "../api/users";
 import { api } from "../api/client";
 import type { BehaviorRecord } from "../types/behavior.types";
-import type { StudentResponce } from "../types/student.type";
+import type { HomeroomTeacher, StudentResponce } from "../types/student.type";
 import { useAuth } from "../context/authContext";
 import { gradeOptions, sortClassLetters } from "../utils/classOptions";
 import { toastBus } from "../utils/toastBus";
+import { notifyDataChanged } from "../utils/dataRefresh";
 
 interface Props {
   studentId: string;
@@ -68,16 +69,17 @@ const subjects = [
   "Музыка",
   "ИЗО",
 ];
+const CLASS_HOUR_SUBJECT = "Классный час";
 
 const reasons = [
-  "Саботаж работы / Невыполнение инструкций",
-  "Использование гаджета без разрешения",
+  "Невыполнение требований учителя",
   "Нарушение тишины и помехи классу",
+  "Нарушение правил техники безопасности",
+  "Использование гаджета без разрешения учителя",
   "Некорректные высказывания",
-  "Нарушение правил безопасности / ТБ",
   "Мелкая порча имущества",
-  "Опоздание",
-  "Отсутствие формы",
+  "Опоздание на урок",
+  "Не готов к уроку",
 ];
 
 const getUploadUrl = (path: string) => {
@@ -90,7 +92,7 @@ const emptyParentForm = {
   first_name: "",
   last_name: "",
   middle_name: "",
-  email: "",
+  login: "",
   relationship: "Родитель",
 };
 
@@ -107,6 +109,12 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [student, setStudent] = useState<StudentResponce | null>(null);
+  const canManageParents = isAdmin || (
+    user?.is_class_teacher &&
+    student?.grade === user.homeroom_grade &&
+    student?.class_letter === user.homeroom_class_letter
+  );
+  const [classTeacher, setClassTeacher] = useState<HomeroomTeacher | null>(null);
   const [subject, setSubject] = useState("");
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [comment, setComment] = useState("");
@@ -122,7 +130,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   const [isAttachParentModalOpen, setIsAttachParentModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [createdParentCredentials, setCreatedParentCredentials] = useState<{
-    email: string;
+    login: string;
     password: string;
   } | null>(null);
   const [isParentActionLoading, setIsParentActionLoading] = useState(false);
@@ -133,20 +141,21 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   const [isStudentLoading, setIsStudentLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [isDeleteStudentDialogOpen, setIsDeleteStudentDialogOpen] = useState(false);
+  const [isDeletingStudent, setIsDeletingStudent] = useState(false);
   const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
     middle_name: "",
-    email: "",
     grade: "",
     class_letter: "",
   });
   const [schoolLetters, setSchoolLetters] = useState<string[]>([]);
-  const canCreateBehavior = user?.role === "admin" || user?.role === "teacher";
+  const canCreateBehavior = ["admin", "teacher"].includes(user?.role ?? "");
 
   const availableSubjects = useMemo(() => {
     if (user?.role !== "teacher" || !student) return subjects;
-    return Array.from(
+    const assignedSubjects = Array.from(
       new Set(
         teacherAssignments
           .filter(
@@ -157,18 +166,35 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
           .map((assignment) => assignment.subject),
       ),
     ).sort((a, b) => a.localeCompare(b));
-  }, [student, teacherAssignments, user?.role]);
+    const isOwnHomeroom = user.is_class_teacher
+      && user.homeroom_grade === student.grade
+      && user.homeroom_class_letter === student.class_letter;
+
+    return isOwnHomeroom
+      ? [CLASS_HOUR_SUBJECT, ...assignedSubjects.filter((item) => item !== CLASS_HOUR_SUBJECT)]
+      : assignedSubjects;
+  }, [student, teacherAssignments, user?.homeroom_class_letter, user?.homeroom_grade, user?.is_class_teacher, user?.role]);
 
   useEffect(() => {
     const fetchStudent = async () => {
       try {
         setIsStudentLoading(true);
-        const [studentData, historyData, parentData, classOptions] = await Promise.all([
+        const [studentData, historyData, classOptions, homeroomTeacher] = await Promise.all([
           getStudentById(studentId),
           getBehaviorHistory(studentId),
-          getStudentParents(studentId),
           getClassOptions(),
+          ["admin", "teacher"].includes(user?.role ?? "")
+            ? getStudentClassTeacher(studentId)
+            : Promise.resolve(null),
         ]);
+        const canManageStudentParents = isAdmin || (
+          user?.is_class_teacher &&
+          studentData.grade === user.homeroom_grade &&
+          studentData.class_letter === user.homeroom_class_letter
+        );
+        const parentData = canManageStudentParents
+          ? await getStudentParents(studentId)
+          : [];
 
         const letters = sortClassLetters(classOptions.letters);
         setStudent(studentData);
@@ -181,12 +207,12 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
           first_name: studentData.first_name,
           last_name: studentData.last_name,
           middle_name: studentData.middle_name,
-          email: studentData.email,
           grade: String(studentData.grade),
           class_letter: studentData.class_letter,
         });
         setHistory(historyData);
         setParentLinks(parentData);
+        setClassTeacher(homeroomTeacher);
       } catch {
         toastBus.error("Не удалось загрузить карточку ученика.");
       } finally {
@@ -195,7 +221,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     };
 
     fetchStudent();
-  }, [studentId]);
+  }, [isAdmin, studentId, user?.homeroom_class_letter, user?.homeroom_grade, user?.is_class_teacher, user?.role]);
 
   useEffect(() => {
     if (user?.role !== "teacher") {
@@ -233,7 +259,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
   }, [availableSubjects, subject, user?.role]);
 
   useEffect(() => {
-    if (!isAdmin || !student || !isAttachParentModalOpen) return;
+    if (!canManageParents || !student || !isAttachParentModalOpen) return;
 
     const timer = window.setTimeout(async () => {
       try {
@@ -245,7 +271,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [isAdmin, isAttachParentModalOpen, parentSearch, student]);
+  }, [canManageParents, isAttachParentModalOpen, parentSearch, student]);
 
   const handleSend = async () => {
     if (!student || selectedReasons.length === 0 || !subject) return;
@@ -262,6 +288,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
 
       const updatedHistory = await getBehaviorHistory(student.id);
       setHistory(updatedHistory);
+      notifyDataChanged();
       toastBus.success("Замечание сохранено");
       setSubject("");
       setSelectedReasons([]);
@@ -288,12 +315,12 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
         first_name: updated.first_name,
         last_name: updated.last_name,
         middle_name: updated.middle_name,
-        email: updated.email,
         grade: String(updated.grade),
         class_letter: updated.class_letter,
       });
       setIsEditing(false);
       onChanged?.();
+      notifyDataChanged();
       toastBus.success("Ученик обновлён");
     } catch {
       toastBus.error("Не удалось обновить ученика.");
@@ -302,21 +329,20 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     }
   };
 
-  const handleDeleteStudent = async () => {
+  const runConfirmedStudentDeletion = async () => {
     if (!student) return;
-    const confirmed = window.confirm("Удалить ученика? Это действие необратимо.");
-    if (!confirmed) return;
 
     try {
-      setIsSavingStudent(true);
+      setIsDeletingStudent(true);
       await deleteStudent(student.id);
       toastBus.success("Ученик удалён");
       onChanged?.();
+      notifyDataChanged();
       onClose();
     } catch {
       toastBus.error("Не удалось удалить ученика.");
     } finally {
-      setIsSavingStudent(false);
+      setIsDeletingStudent(false);
     }
   };
 
@@ -336,6 +362,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
       setIsParentActionLoading(true);
       await attachParentToStudent(student.id, parentId, parentRelationship);
       await refreshParents();
+      notifyDataChanged();
       setParentRelationship("Родитель");
       setParentSearch("");
       setIsAttachParentModalOpen(false);
@@ -353,6 +380,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
       setIsParentActionLoading(true);
       await detachParentFromStudent(student.id, parentId);
       await refreshParents();
+      notifyDataChanged();
       toastBus.success("Родитель отвязан");
     } catch {
       toastBus.error("Не удалось отвязать родителя.");
@@ -366,9 +394,9 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
     if (
       !newParentForm.first_name.trim() ||
       !newParentForm.last_name.trim() ||
-      !newParentForm.email.trim()
+      !newParentForm.login.trim()
     ) {
-      toastBus.error("Заполните имя, фамилию и email родителя.");
+      toastBus.error("Заполните имя, фамилию и логин родителя.");
       return;
     }
 
@@ -380,7 +408,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
         first_name: newParentForm.first_name.trim(),
         last_name: newParentForm.last_name.trim(),
         middle_name: newParentForm.middle_name.trim(),
-        email: newParentForm.email.trim(),
+        login: newParentForm.login.trim(),
         password,
         role: "parent",
       });
@@ -390,8 +418,9 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
         newParentForm.relationship.trim() || "Родитель",
       );
       await refreshParents();
+      notifyDataChanged();
       setCreatedParentCredentials({
-        email: parent.email,
+        login: parent.login,
         password,
       });
       setNewParentForm(emptyParentForm);
@@ -513,8 +542,8 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                       )}
                       <button
                         type="button"
-                        onClick={handleDeleteStudent}
-                        disabled={isSavingStudent}
+                        onClick={() => setIsDeleteStudentDialogOpen(true)}
+                        disabled={isSavingStudent || isDeletingStudent}
                         className="flex h-11 w-11 items-center justify-center rounded-lg border border-red-200 bg-white text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                         title="Удалить"
                       >
@@ -530,7 +559,6 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                         ["last_name", "Фамилия"],
                         ["first_name", "Имя"],
                         ["middle_name", "Отчество"],
-                        ["email", "Email родителя"],
                       ].map(([field, label]) => (
                         <label
                           key={field}
@@ -599,18 +627,31 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                           {student?.middle_name}
                         </p>
                       </div>
-                      {isAdmin && (
-                        <div className="flex items-center gap-2 text-base text-slate-700">
-                          <IoMailOutline className="h-5 w-5 text-slate-400" />
-                          <span className="break-all">{student?.email}</span>
-                        </div>
-                      )}
                     </>
                   )}
                 </div>
               </div>
 
-              <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+              {["admin", "teacher"].includes(user?.role ?? "") && (
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                  <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
+                    Классный руководитель
+                  </p>
+                  {classTeacher ? (
+                    <p className="mt-2 text-base font-extrabold text-slate-950">
+                      {classTeacher.last_name} {classTeacher.first_name}{" "}
+                      {classTeacher.middle_name}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm font-medium text-slate-500">
+                      Пока не назначен
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {canManageParents && (
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-bold uppercase tracking-[0.08em] text-slate-500">
@@ -642,11 +683,11 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                             {link.parent.middle_name}
                           </p>
                           <p className="mt-1 truncate text-sm font-medium text-slate-500">
-                            {link.parent.email}
+                            {link.parent.login}
                             {link.relationship ? ` · ${link.relationship}` : ""}
                           </p>
                         </div>
-                        {isAdmin && (
+                        {canManageParents && (
                           <button
                             type="button"
                             onClick={() => handleDetachParent(link.parent_id)}
@@ -662,7 +703,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                   )}
                 </div>
 
-                {isAdmin && (
+                {canManageParents && (
                   <div className="mt-4 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2">
                     <button
                       type="button"
@@ -687,7 +728,8 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                     </button>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
 
               <div className="mt-5">
                 <div className="mb-3 flex items-center justify-between">
@@ -761,7 +803,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                     </h3>
                   </div>
                   <p className="mt-1 text-base text-slate-500">
-                    Выберите причину. Урок берётся из назначения учителя.
+                    Выберите причину.
                   </p>
                 </div>
               </div>
@@ -806,7 +848,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                     {reasons.map((reason) => (
                       <label
                         key={reason}
-                        className="flex min-h-14 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-700 transition hover:bg-blue-50"
+                        className="flex min-h-14 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-700 transition hover:border-blue-300"
                       >
                         <input
                           type="checkbox"
@@ -840,7 +882,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                   </span>
                 </label>
 
-                <label className="grid cursor-pointer gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-base font-bold text-slate-700 transition hover:border-blue-400 hover:bg-blue-50">
+                <label className="grid cursor-pointer gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-base font-bold text-slate-700 transition hover:border-blue-400">
                   <span className="flex items-center gap-2">
                     <IoImageOutline className="h-5 w-5" />
                     Фото к замечанию
@@ -918,7 +960,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                   <input
                     value={parentSearch}
                     onChange={(event) => setParentSearch(event.target.value)}
-                    placeholder="ФИО или email"
+                    placeholder="ФИО или логин"
                     className="field w-full pl-10"
                     autoFocus
                   />
@@ -962,7 +1004,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                           {parent.middle_name}
                         </span>
                         <span className="mt-1 block truncate text-sm font-medium text-slate-500">
-                          {parent.email}
+                          {parent.login}
                         </span>
                       </span>
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
@@ -1137,7 +1179,7 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                     ["last_name", "Фамилия"],
                     ["first_name", "Имя"],
                     ["middle_name", "Отчество"],
-                    ["email", "Email"],
+                    ["login", "Логин"],
                     ["relationship", "Кем приходится"],
                   ].map(([field, label]) => (
                     <label
@@ -1187,14 +1229,14 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
                     Родитель создан
                   </h3>
                   <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
-                    Скопируйте email и пароль и отправьте родителю. После
+                    Скопируйте логин и пароль и передайте родителю. После
                     закрытия этого окна пароль больше нельзя будет посмотреть.
                   </p>
                 </div>
 
                 <div className="grid gap-3 p-5">
                   {[
-                    ["Email", createdParentCredentials.email],
+                    ["Логин", createdParentCredentials.login],
                     ["Пароль", createdParentCredentials.password],
                   ].map(([label, value]) => (
                     <label
@@ -1231,6 +1273,54 @@ const StudentModal = ({ studentId, onClose, onChanged }: Props) => {
               </>
             )}
           </motion.div>
+        </div>
+      )}
+
+      {isDeleteStudentDialogOpen && student && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          onClick={() => {
+            if (!isDeletingStudent) setIsDeleteStudentDialogOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-student-title"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#151515]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 px-5 py-4 dark:border-white/10">
+              <h2
+                id="delete-student-title"
+                className="text-xl font-extrabold text-slate-950 dark:text-white"
+              >
+                Удалить ученика
+              </h2>
+              <p className="mt-2 text-base font-medium leading-7 text-slate-600 dark:text-slate-300">
+                Удалить ученика «{student.last_name} {student.first_name}»?
+                Это действие необратимо.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 bg-slate-50 px-5 py-4 dark:bg-white/[0.04] sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDeleteStudentDialogOpen(false)}
+                disabled={isDeletingStudent}
+                className="button-secondary"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={runConfirmedStudentDeletion}
+                disabled={isDeletingStudent}
+                className="button-danger"
+              >
+                {isDeletingStudent ? "Удаляем..." : "Удалить ученика"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

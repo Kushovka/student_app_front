@@ -4,7 +4,7 @@ import type { AuthUser } from "../api/profile";
 export interface AuthContextValue {
   user: AuthUser | null;
   isUserLoading: boolean;
-  refreshMe: () => Promise<void>;
+  refreshMe: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

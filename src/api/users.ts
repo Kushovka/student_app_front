@@ -12,11 +12,14 @@ export interface UserListItem {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
   role: string;
   is_blocked?: boolean;
   school_id: string;
   max_connected?: boolean;
+  homeroom_grade?: number | null;
+  homeroom_class_letter?: string | null;
+  is_class_teacher?: boolean;
   school?: UserSchoolInfo;
 }
 
@@ -29,7 +32,7 @@ export interface CreateSchoolAdminPayload {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
   password: string;
   school_id: string;
 }
@@ -38,9 +41,12 @@ export interface CreateSchoolUserPayload {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
   password: string;
   role: "admin" | "teacher" | "parent";
+  homeroom_grade?: number | null;
+  homeroom_class_letter?: string | null;
+  teacher_assignments?: TeacherAssignmentPayload[];
 }
 
 export interface TeacherAssignment {

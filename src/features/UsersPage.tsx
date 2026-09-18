@@ -11,7 +11,7 @@ import {
   IoTrashOutline,
 } from "react-icons/io5";
 import { useNavigate } from "react-router";
-import { getClassOptions, getStudents, type ClassOption } from "../api/student";
+import { getStudents } from "../api/student";
 import {
   createSchoolUser,
   createTeacherAssignment,
@@ -29,16 +29,17 @@ import {
 } from "../api/users";
 import { useAuth } from "../context/authContext";
 import type { StudentResponce } from "../types/student.type";
-import { gradeOptions, sortClassLetters } from "../utils/classOptions";
+import { gradeOptions } from "../utils/classOptions";
 import { formatRole } from "../utils/formatRole";
 import { toastBus } from "../utils/toastBus";
+import { DATA_CHANGED_EVENT, notifyDataChanged } from "../utils/dataRefresh";
 
 type TabId = "all" | "students" | "admin" | "teacher" | "parent";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "all", label: "Все" },
   { id: "students", label: "Ученики" },
-  { id: "admin", label: "Админы" },
+  { id: "admin", label: "Администраторы" },
   { id: "teacher", label: "Учителя" },
   { id: "parent", label: "Родители" },
 ];
@@ -47,9 +48,12 @@ const emptyCreateForm: CreateSchoolUserPayload = {
   last_name: "",
   first_name: "",
   middle_name: "",
-  email: "",
+  login: "",
   password: "",
   role: "teacher",
+  homeroom_grade: null,
+  homeroom_class_letter: null,
+  teacher_assignments: [],
 };
 
 const roleOptions: Array<{ value: CreateSchoolUserPayload["role"]; label: string }> = [
@@ -83,11 +87,13 @@ const schoolSubjects = [
 
 const emptyAssignmentForm: TeacherAssignmentPayload = {
   grade: 7,
-  class_letter: "__all__",
+  class_letter: "А",
   subject: "Математика",
 };
 
-const allClassLettersValue = "__all__";
+const assignmentLetterOptions = Array.from(
+  "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ",
+);
 
 const fullName = (item: Pick<UserListItem | StudentResponce, "last_name" | "first_name" | "middle_name">) =>
   [item.last_name, item.first_name, item.middle_name].filter(Boolean).join(" ");
@@ -152,6 +158,7 @@ const UsersPage = () => {
   const { user, isUserLoading } = useAuth();
   const canManageUsers = user?.role === "admin" || user?.role === "superadmin";
   const isSchoolAdmin = user?.role === "admin";
+  const isSuperadmin = user?.role === "superadmin";
 
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [students, setStudents] = useState<StudentResponce[]>([]);
@@ -168,14 +175,15 @@ const UsersPage = () => {
   );
   const [assignmentForm, setAssignmentForm] =
     useState<TeacherAssignmentPayload>(emptyAssignmentForm);
-  const [schoolClasses, setSchoolClasses] = useState<ClassOption[]>([]);
+  const [createAssignmentForm, setCreateAssignmentForm] =
+    useState<TeacherAssignmentPayload>(emptyAssignmentForm);
   const [isAssignmentLoading, setIsAssignmentLoading] = useState(false);
   const [assignmentActionId, setAssignmentActionId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreateSchoolUserPayload>(emptyCreateForm);
   const [createdUserCredentials, setCreatedUserCredentials] = useState<{
-    email: string;
+    login: string;
     password: string;
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -209,7 +217,7 @@ const UsersPage = () => {
 
     if (!normalizedSearch) return byRole;
     return byRole.filter((u) =>
-      `${fullName(u)} ${u.email} ${formatRole(u.role)}`
+      `${fullName(u)} ${u.login} ${formatRole(u.role)}`
         .toLowerCase()
         .includes(normalizedSearch),
     );
@@ -218,7 +226,7 @@ const UsersPage = () => {
   const filteredStudents = useMemo(() => {
     if (!normalizedSearch) return students;
     return students.filter((student) =>
-      `${fullName(student)} ${student.grade}${student.class_letter} ${student.email}`
+      `${fullName(student)} ${student.grade}${student.class_letter}`
         .toLowerCase()
         .includes(normalizedSearch),
     );
@@ -251,31 +259,19 @@ const UsersPage = () => {
     return activeGroup?.items ?? [];
   }, [selectedClassName, studentClassGroups]);
 
-  const availableAssignmentLetters = useMemo(
-    () =>
-      sortClassLetters(
-        schoolClasses
-          .filter((item) => item.grade === Number(assignmentForm.grade))
-          .map((item) => item.class_letter),
-      ),
-    [assignmentForm.grade, schoolClasses],
-  );
-
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setIsLoading(true);
-      const [usersData, studentsData, classOptions] = await Promise.all([
+      if (!silent) setIsLoading(true);
+      const [usersData, studentsData] = await Promise.all([
         getUsers(),
         isSchoolAdmin ? fetchAllStudents() : null,
-        isSchoolAdmin ? getClassOptions() : null,
       ]);
       setUsers(usersData);
       setStudents(studentsData ?? []);
-      setSchoolClasses(classOptions?.classes ?? []);
     } catch {
-      toastBus.error("Не удалось загрузить данные.");
+      if (!silent) toastBus.error("Не удалось загрузить данные.");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -291,6 +287,13 @@ const UsersPage = () => {
   }, [canManageUsers, isSchoolAdmin, isUserLoading]);
 
   useEffect(() => {
+    const refreshOnDataChange = () => fetchData(true);
+    window.addEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageUsers, isSchoolAdmin]);
+
+  useEffect(() => {
     if (activeTab !== "students") return;
     if (studentClassGroups.length === 0) {
       setSelectedClassName("");
@@ -300,27 +303,6 @@ const UsersPage = () => {
       setSelectedClassName(studentClassGroups[0].className);
     }
   }, [activeTab, selectedClassName, studentClassGroups]);
-
-  useEffect(() => {
-    if (availableAssignmentLetters.length === 0) {
-      if (!assignmentForm.class_letter) return;
-      setAssignmentForm((prev) => ({
-        ...prev,
-        class_letter: "",
-      }));
-      return;
-    }
-    if (
-      assignmentForm.class_letter === allClassLettersValue ||
-      availableAssignmentLetters.includes(assignmentForm.class_letter)
-    ) {
-      return;
-    }
-    setAssignmentForm((prev) => ({
-      ...prev,
-      class_letter: allClassLettersValue,
-    }));
-  }, [assignmentForm.class_letter, availableAssignmentLetters]);
 
   useEffect(() => {
     if (!isSchoolAdmin) return;
@@ -373,6 +355,7 @@ const UsersPage = () => {
     setIsCreateModalOpen(false);
     setCreatedUserCredentials(null);
     setCreateForm(emptyCreateForm);
+    setCreateAssignmentForm(emptyAssignmentForm);
   };
 
   const copyValue = async (value: string, label: string) => {
@@ -398,15 +381,12 @@ const UsersPage = () => {
   const handleAddAssignment = async () => {
     if (!selectedUser || selectedUser.role !== "teacher") return;
     const subject = assignmentForm.subject.trim();
-    const targetLetters =
-      assignmentForm.class_letter === allClassLettersValue
-        ? availableAssignmentLetters
-        : [assignmentForm.class_letter];
+    const targetLetters = [assignmentForm.class_letter];
 
     if (
       !gradeOptions.includes(Number(assignmentForm.grade)) ||
       targetLetters.length === 0 ||
-      targetLetters.some((letter) => !availableAssignmentLetters.includes(letter)) ||
+      targetLetters.some((letter) => !assignmentLetterOptions.includes(letter)) ||
       !subject
     ) {
       toastBus.error("Укажите класс и предмет.");
@@ -440,6 +420,7 @@ const UsersPage = () => {
         ),
       );
       setTeacherAssignments((prev) => [...prev, ...created]);
+      notifyDataChanged();
       toastBus.success(
         created.length === 1
           ? "Назначение добавлено"
@@ -461,6 +442,7 @@ const UsersPage = () => {
       setTeacherAssignments((prev) =>
         prev.filter((item) => item.id !== assignment.id),
       );
+      notifyDataChanged();
       toastBus.success("Назначение удалено");
     } catch {
       toastBus.error("Не удалось удалить назначение.");
@@ -473,9 +455,9 @@ const UsersPage = () => {
     if (
       !createForm.last_name.trim() ||
       !createForm.first_name.trim() ||
-      !createForm.email.trim()
+      !createForm.login.trim()
     ) {
-      toastBus.error("Заполните фамилию, имя и email.");
+      toastBus.error("Заполните фамилию, имя и логин.");
       return;
     }
 
@@ -488,14 +470,15 @@ const UsersPage = () => {
         last_name: createForm.last_name.trim(),
         first_name: createForm.first_name.trim(),
         middle_name: createForm.middle_name.trim(),
-        email: createForm.email.trim(),
+        login: createForm.login.trim(),
         password,
       });
       setUsers((prev) => [...prev, created]);
+      notifyDataChanged();
       setActiveTab(created.role as TabId);
       setCreateForm(emptyCreateForm);
       setCreatedUserCredentials({
-        email: created.email,
+        login: created.login,
         password,
       });
       toastBus.success("Пользователь создан");
@@ -504,6 +487,29 @@ const UsersPage = () => {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const addCreateAssignment = () => {
+    const subject = createAssignmentForm.subject.trim();
+    const assignment = {
+      grade: Number(createAssignmentForm.grade),
+      class_letter: createAssignmentForm.class_letter,
+      subject,
+    };
+    if (!subject || !gradeOptions.includes(assignment.grade) || !assignmentLetterOptions.includes(assignment.class_letter)) {
+      toastBus.error("Укажите класс и предмет.");
+      return;
+    }
+    if (createForm.teacher_assignments?.some((item) =>
+      item.grade === assignment.grade && item.class_letter === assignment.class_letter && item.subject === assignment.subject,
+    )) {
+      toastBus.error("Такое назначение уже добавлено.");
+      return;
+    }
+    setCreateForm((prev) => ({
+      ...prev,
+      teacher_assignments: [...(prev.teacher_assignments ?? []), assignment],
+    }));
   };
 
   const handleRoleChange = async (target: UserListItem, nextRole: string) => {
@@ -517,6 +523,7 @@ const UsersPage = () => {
       setActionUserId(target.id);
       const updated = await updateUserRole(target.id, nextRole);
       updateUserInList(updated);
+      notifyDataChanged();
       setSelectedUser((prev) => (prev?.id === updated.id ? updated : prev));
       if (updated.role === "teacher") {
         await refreshTeacherAssignments(updated.id);
@@ -558,8 +565,11 @@ const UsersPage = () => {
     }
 
     setConfirm({
-      title: "Удалить пользователя",
-      message: "Удаление необратимо. Продолжить?",
+      title: target.role === "admin" ? "Удалить администратора" : "Удалить пользователя",
+      message:
+        target.role === "admin"
+          ? "Администратор потеряет доступ к системе. Удаление необратимо. Продолжить?"
+          : "Удаление необратимо. Продолжить?",
       variant: "danger",
       action: "delete",
       user: target,
@@ -576,12 +586,14 @@ const UsersPage = () => {
       if (confirm.action === "delete") {
         await deleteUser(target.id);
         setUsers((prev) => prev.filter((u) => u.id !== target.id));
+        notifyDataChanged();
         if (selectedUser?.id === target.id) closeUserModal();
         toastBus.success("Пользователь удалён");
       } else {
         const next = confirm.action === "block";
         const updated = await updateUserBlockStatus(target.id, next);
         updateUserInList(updated);
+        notifyDataChanged();
         setSelectedUser((prev) => (prev?.id === updated.id ? updated : prev));
         toastBus.success(
           next ? "Пользователь заблокирован" : "Пользователь разблокирован",
@@ -626,7 +638,7 @@ const UsersPage = () => {
               <IoArrowBackOutline className="h-5 w-5" />
               Главная
             </button>
-            <p className="page-kicker">Админ-панель</p>
+            <p className="page-kicker">Панель администратора</p>
             <h1 className="page-title mt-2">Пользователи школы</h1>
             <p className="mt-2 text-base font-medium text-slate-500">
               {user?.school
@@ -661,7 +673,7 @@ const UsersPage = () => {
             </div>
           </div>
           <div className="surface px-4 py-3">
-            <div className="text-sm font-bold text-slate-500">Админов</div>
+            <div className="text-sm font-bold text-slate-500">Администраторов</div>
             <div className="mt-1 text-3xl font-extrabold text-slate-950 dark:text-white">
               {isLoading ? "—" : counts.admin}
             </div>
@@ -720,7 +732,7 @@ const UsersPage = () => {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="field w-full pl-12"
-                placeholder="Поиск по ФИО или email"
+                placeholder="Поиск по ФИО или логину"
               />
             </label>
           </div>
@@ -801,7 +813,6 @@ const UsersPage = () => {
                       <tr>
                         <th className="px-5 py-4">ФИО</th>
                         <th className="px-5 py-4">Класс</th>
-                        <th className="px-5 py-4">Email</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-white/10">
@@ -814,9 +825,6 @@ const UsersPage = () => {
                             <span className="inline-flex rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                               {getClassName(student)}
                             </span>
-                          </td>
-                          <td className="px-5 py-5 font-medium text-slate-500">
-                            {student.email || "—"}
                           </td>
                         </tr>
                       ))}
@@ -835,7 +843,7 @@ const UsersPage = () => {
                 <thead className="border-b border-slate-200 bg-slate-50 text-sm font-bold uppercase tracking-[0.06em] text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">
                   <tr>
                     <th className="px-5 py-4">ФИО</th>
-                    <th className="px-5 py-4">Email</th>
+                    <th className="px-5 py-4">Логин</th>
                     <th className="px-5 py-4">Роль</th>
                     <th className="px-5 py-4">MAX</th>
                     <th className="px-5 py-4">Статус</th>
@@ -853,7 +861,7 @@ const UsersPage = () => {
                         {fullName(u)}
                       </td>
                       <td className="px-5 py-5 font-medium text-slate-600 dark:text-slate-300">
-                        {u.email}
+                        {u.login}
                       </td>
                       <td className="px-5 py-5">
                         <span className="inline-flex rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
@@ -861,7 +869,7 @@ const UsersPage = () => {
                         </span>
                       </td>
                       <td className="px-5 py-5">
-                        {u.role === "parent" ? (
+                        {u.role === "parent" || u.is_class_teacher ? (
                           <MaxConnectionBadge
                             connected={u.max_connected}
                             compact
@@ -875,11 +883,11 @@ const UsersPage = () => {
                       <td className="px-5 py-5">
                         {u.is_blocked ? (
                           <span className="inline-flex rounded-lg bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700">
-                            blocked
+                            Заблокирован
                           </span>
                         ) : (
                           <span className="inline-flex rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700">
-                            active
+                            Активен
                           </span>
                         )}
                       </td>
@@ -944,14 +952,14 @@ const UsersPage = () => {
                     Пользователь создан
                   </h3>
                   <p className="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-slate-500">
-                    Скопируйте email и пароль и передайте пользователю. После
+                    Скопируйте логин и пароль и передайте пользователю. После
                     закрытия этого окна пароль больше нельзя будет посмотреть.
                   </p>
                 </div>
 
                 <div className="grid gap-3 px-5 pb-5">
                   {[
-                    ["Email", createdUserCredentials.email],
+                    ["Логин", createdUserCredentials.login],
                     ["Пароль", createdUserCredentials.password],
                   ].map(([label, value]) => (
                     <label
@@ -982,7 +990,7 @@ const UsersPage = () => {
               </>
             ) : (
               <>
-                <div className="grid gap-3 p-5 sm:grid-cols-2">
+                <div className="grid max-h-[calc(100vh-220px)] gap-3 overflow-y-auto p-5 sm:grid-cols-2">
                   <input
                     value={createForm.last_name}
                     onChange={(event) =>
@@ -1017,15 +1025,15 @@ const UsersPage = () => {
                     placeholder="Отчество"
                   />
                   <input
-                    value={createForm.email}
+                    value={createForm.login}
                     onChange={(event) =>
                       setCreateForm((prev) => ({
                         ...prev,
-                        email: event.target.value,
+                        login: event.target.value,
                       }))
                     }
                     className="field"
-                    placeholder="Email"
+                    placeholder="Логин"
                   />
                   <select
                     value={createForm.role}
@@ -1033,6 +1041,11 @@ const UsersPage = () => {
                       setCreateForm((prev) => ({
                         ...prev,
                         role: event.target.value as CreateSchoolUserPayload["role"],
+                        homeroom_grade: event.target.value === "teacher" ? prev.homeroom_grade : null,
+                        homeroom_class_letter:
+                          event.target.value === "teacher" ? prev.homeroom_class_letter : null,
+                        teacher_assignments:
+                          event.target.value === "teacher" ? prev.teacher_assignments : [],
                       }))
                     }
                     className="field sm:col-span-2"
@@ -1043,6 +1056,147 @@ const UsersPage = () => {
                       </option>
                     ))}
                   </select>
+                  {createForm.role === "teacher" && (
+                    <div className="sm:col-span-2">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left dark:border-white/10 dark:bg-white/[0.04]">
+                        <input
+                          type="checkbox"
+                          checked={createForm.homeroom_grade !== null}
+                          onChange={(event) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              homeroom_grade: event.target.checked ? 5 : null,
+                              homeroom_class_letter: event.target.checked ? "А" : null,
+                            }))
+                          }
+                          className="mt-1 h-4 w-4 accent-blue-600"
+                        />
+                        <span>
+                          <span className="block text-base font-extrabold text-slate-950 dark:text-white">
+                            Назначить классным руководителем
+                          </span>
+                          <span className="mt-1 block text-sm font-medium leading-5 text-slate-500">
+                            Необязательно. Учитель получит доступ к ученикам, родителям и замечаниям этого класса.
+                          </span>
+                        </span>
+                      </label>
+
+                      {createForm.homeroom_grade !== null && (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <select
+                        value={createForm.homeroom_grade ?? 5}
+                        onChange={(event) =>
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            homeroom_grade: Number(event.target.value),
+                          }))
+                        }
+                        className="field"
+                        aria-label="Класс классного руководителя"
+                      >
+                        {gradeOptions.map((grade) => (
+                          <option key={grade} value={grade}>{grade} класс</option>
+                        ))}
+                      </select>
+                      <select
+                        value={createForm.homeroom_class_letter ?? "А"}
+                        onChange={(event) =>
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            homeroom_class_letter: event.target.value,
+                          }))
+                        }
+                        className="field"
+                        aria-label="Буква класса классного руководителя"
+                      >
+                        {assignmentLetterOptions.map((letter) => (
+                          <option key={letter} value={letter}>{letter}</option>
+                        ))}
+                      </select>
+                        </div>
+                      )}
+
+                      <div className="mt-3 rounded-xl border border-slate-200 p-4 dark:border-white/10">
+                        <div>
+                          <h3 className="text-base font-extrabold text-slate-950 dark:text-white">
+                            Классы и предметы
+                          </h3>
+                          <p className="mt-1 text-sm font-medium text-slate-500">
+                            Необязательно. Добавьте классы, в которых учитель ведёт уроки.
+                          </p>
+                        </div>
+
+                        {(createForm.teacher_assignments?.length ?? 0) > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {createForm.teacher_assignments?.map((assignment) => (
+                              <span
+                                key={`${assignment.grade}-${assignment.class_letter}-${assignment.subject}`}
+                                className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200"
+                              >
+                                {assignment.grade}{assignment.class_letter} · {assignment.subject}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCreateForm((prev) => ({
+                                      ...prev,
+                                      teacher_assignments: prev.teacher_assignments?.filter((item) =>
+                                        !(
+                                          item.grade === assignment.grade &&
+                                          item.class_letter === assignment.class_letter &&
+                                          item.subject === assignment.subject
+                                        ),
+                                      ) ?? [],
+                                    }))
+                                  }
+                                  className="flex h-6 w-6 items-center justify-center rounded text-red-600 transition hover:bg-red-50 dark:hover:bg-red-500/10"
+                                  aria-label={`Удалить назначение ${assignment.grade}${assignment.class_letter} ${assignment.subject}`}
+                                >
+                                  <IoClose className="h-4 w-4" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[7rem_7rem_minmax(0,1fr)_auto]">
+                          <select
+                            value={createAssignmentForm.grade}
+                            onChange={(event) =>
+                              setCreateAssignmentForm((prev) => ({ ...prev, grade: Number(event.target.value) }))
+                            }
+                            className="field"
+                            aria-label="Класс для предмета"
+                          >
+                            {gradeOptions.map((grade) => <option key={grade} value={grade}>{grade} класс</option>)}
+                          </select>
+                          <select
+                            value={createAssignmentForm.class_letter}
+                            onChange={(event) =>
+                              setCreateAssignmentForm((prev) => ({ ...prev, class_letter: event.target.value }))
+                            }
+                            className="field"
+                            aria-label="Буква класса для предмета"
+                          >
+                            {assignmentLetterOptions.map((letter) => <option key={letter} value={letter}>{letter}</option>)}
+                          </select>
+                          <select
+                            value={createAssignmentForm.subject}
+                            onChange={(event) =>
+                              setCreateAssignmentForm((prev) => ({ ...prev, subject: event.target.value }))
+                            }
+                            className="field sm:col-span-2 lg:col-span-1"
+                            aria-label="Предмет"
+                          >
+                            {schoolSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+                          </select>
+                          <button type="button" onClick={addCreateAssignment} className="button-secondary sm:col-span-2 lg:col-span-1">
+                            <IoAddOutline className="h-5 w-5" />
+                            Добавить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-white/10 dark:bg-white/[0.04] sm:flex-row sm:justify-end">
@@ -1116,10 +1270,10 @@ const UsersPage = () => {
                       <div className="grid gap-3 md:grid-cols-4">
                         <div className="md:col-span-2">
                           <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                            Email
+                            Логин
                           </div>
                           <div className="mt-1 break-words text-base font-extrabold text-slate-950 dark:text-white">
-                            {selectedUser.email}
+                            {selectedUser.login}
                           </div>
                         </div>
                         <div>
@@ -1135,10 +1289,10 @@ const UsersPage = () => {
                             Статус
                           </div>
                           <div className="mt-1 text-base font-extrabold text-slate-950 dark:text-white">
-                            {selectedUser.is_blocked ? "blocked" : "active"}
+                            {selectedUser.is_blocked ? "Заблокирован" : "Активен"}
                           </div>
                         </div>
-                        {selectedUser.role === "parent" && (
+                        {(selectedUser.role === "parent" || selectedUser.is_class_teacher) && (
                           <div className="md:col-span-4">
                             <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
                               MAX
@@ -1160,6 +1314,16 @@ const UsersPage = () => {
                               : "—"}
                           </div>
                         </div>
+                        {selectedUser.is_class_teacher && (
+                          <div className="md:col-span-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+                              Классное руководство
+                            </div>
+                            <div className="mt-1 text-base font-extrabold text-slate-950 dark:text-white">
+                              {selectedUser.homeroom_grade}{selectedUser.homeroom_class_letter} класс
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1225,7 +1389,7 @@ const UsersPage = () => {
                               setAssignmentForm((prev) => ({
                                 ...prev,
                                 grade: Number(event.target.value),
-                                class_letter: allClassLettersValue,
+                                class_letter: "А",
                               }))
                             }
                             className="field w-full min-w-0"
@@ -1248,17 +1412,8 @@ const UsersPage = () => {
                               }))
                             }
                             className="field w-full min-w-0"
-                            disabled={availableAssignmentLetters.length === 0}
                           >
-                            {availableAssignmentLetters.length === 0 && (
-                              <option value="">Нет букв</option>
-                            )}
-                            {availableAssignmentLetters.length > 0 && (
-                              <option value={allClassLettersValue}>
-                                Все параллели
-                              </option>
-                            )}
-                            {availableAssignmentLetters.map((letter) => (
+                            {assignmentLetterOptions.map((letter) => (
                               <option key={letter} value={letter}>
                                 {letter}
                               </option>
@@ -1330,14 +1485,21 @@ const UsersPage = () => {
                       {selectedUser.is_blocked ? "Разблокировать" : "Заблокировать"}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(selectedUser)}
-                      disabled={!!actionUserId || selectedUser.id === user?.id}
-                      className="button-danger mt-3 w-full"
-                    >
-                      Удалить
-                    </button>
+                    {((isSchoolAdmin &&
+                      selectedUser.role !== "admin" &&
+                      selectedUser.role !== "superadmin") ||
+                      (isSuperadmin && selectedUser.role === "admin")) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(selectedUser)}
+                        disabled={!!actionUserId || selectedUser.id === user?.id}
+                        className="button-danger mt-3 w-full"
+                      >
+                        {selectedUser.role === "admin"
+                          ? "Удалить администратора"
+                          : "Удалить"}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

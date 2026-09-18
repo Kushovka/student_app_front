@@ -9,6 +9,7 @@ import StudentModal from "../components/StudentModal";
 import { useAuth } from "../context/authContext";
 import type { StudentResponce } from "../types/student.type";
 import { toastBus } from "../utils/toastBus";
+import { DATA_CHANGED_EVENT } from "../utils/dataRefresh";
 
 const ParentCabinetPage = () => {
   const { user } = useAuth();
@@ -17,33 +18,44 @@ const ParentCabinetPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchChildren = async () => {
+    const fetchChildren = async (silent = false) => {
       try {
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         const data = await getStudents(undefined, undefined, undefined, 1, 100);
         setStudents(data.items);
       } catch {
-        toastBus.error("Не удалось загрузить кабинет родителя.");
+        if (!silent) toastBus.error("Не удалось загрузить кабинет родителя.");
       } finally {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
       }
     };
 
     fetchChildren();
-  }, []);
+    const refreshId = window.setInterval(() => {
+      if (document.visibilityState === "visible" && !selectedId) fetchChildren(true);
+    }, 3_000);
+    const refreshOnDataChange = () => {
+      if (!selectedId) fetchChildren(true);
+    };
+    window.addEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    return () => {
+      window.clearInterval(refreshId);
+      window.removeEventListener(DATA_CHANGED_EVENT, refreshOnDataChange);
+    };
+  }, [selectedId]);
 
   return (
     <section className="min-h-[calc(100vh-4rem)]">
       <div className="page-shell">
-        <section className="mb-7 rounded-2xl border border-slate-200 bg-[#071225] px-5 py-7 text-white shadow-xl shadow-slate-900/10 dark:border-white/10 sm:px-7 lg:px-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-blue-200">
+        <section className="mb-7 border-b border-slate-200 pb-7 dark:rounded-2xl dark:border dark:border-white/10 dark:bg-[#071225] dark:px-5 dark:py-7 dark:text-white dark:shadow-xl dark:shadow-slate-900/10 sm:dark:px-7 lg:dark:px-8">
+          <div className="hidden dark:inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-blue-200">
             <IoPersonCircleOutline className="h-4 w-4" />
             Родительский кабинет
           </div>
-          <h1 className="mt-5 text-3xl font-extrabold tracking-normal sm:text-4xl">
+          <h1 className="text-3xl font-extrabold tracking-normal text-slate-950 dark:mt-5 dark:text-white sm:text-4xl">
             Добро пожаловать, {user?.first_name ?? "родитель"}!
           </h1>
-          <p className="mt-2 max-w-3xl text-base font-medium leading-7 text-slate-300">
+          <p className="mt-2 max-w-3xl text-base font-medium leading-7 text-slate-600 dark:text-slate-300">
             Здесь доступны только ваши дети и история их замечаний.
           </p>
         </section>
@@ -98,7 +110,7 @@ const ParentCabinetPage = () => {
                     </span>
                   </span>
                 </span>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-white/[0.06] dark:text-slate-300">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#64748b] transition group-hover:bg-blue-600 group-hover:text-white dark:bg-white/[0.06] dark:text-[#cbd5e1]">
                   <IoArrowForwardOutline className="h-5 w-5" />
                 </span>
               </button>

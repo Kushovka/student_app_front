@@ -1,10 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo-shield.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>Школьный контроль</title>
+    <script>
+      (() => {
+        try {
+          const mode = localStorage.getItem("student_app_theme") || "system";
+          const isDark =
+            mode === "dark" ||
+            (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", isDark);
+          document.documentElement.dataset.theme = isDark ? "dark" : "light";
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        } catch {
+          // Если хранилище недоступно, React применит системную тему после запуска.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

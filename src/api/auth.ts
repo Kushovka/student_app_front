@@ -5,14 +5,14 @@ export interface AuthUserPayload {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
   password: string;
   school_id: string;
   role?: "superadmin" | "admin" | "teacher" | "parent";
 }
 
 export interface LoginPayload {
-  email: string;
+  login: string;
   password: string;
 }
 
@@ -25,7 +25,7 @@ export interface UpdateMePayload {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email: string;
+  login: string;
 }
 
 export const registerUser = async (payload: AuthUserPayload) => {

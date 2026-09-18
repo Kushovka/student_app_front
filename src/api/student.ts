@@ -1,5 +1,5 @@
 import type { BehaviorCreate } from "../types/behavior.types";
-import type { StudentResponce } from "../types/student.type";
+import type { HomeroomTeacher, StudentResponce } from "../types/student.type";
 import type { UserListItem } from "./users";
 import { api } from "./client";
 
@@ -7,7 +7,6 @@ export interface CreateStudent {
   first_name: string;
   last_name: string;
   middle_name: string;
-  email?: string;
   grade: number;
   class_letter: string;
 }
@@ -64,6 +63,20 @@ export const getClassOptions = async (): Promise<ClassOptionsResponse> => {
   return data;
 };
 
+export const createClassroom = async (
+  payload: ClassOption,
+): Promise<ClassOption> => {
+  const { data } = await api.post<ClassOption>("/student/classes", payload);
+  return data;
+};
+
+export const deleteClassroom = async (
+  grade: number,
+  classLetter: string,
+): Promise<void> => {
+  await api.delete(`/student/classes/${grade}/${encodeURIComponent(classLetter)}`);
+};
+
 export const updateStudent = async (
   studentId: string,
   payload: UpdateStudentPayload,
@@ -76,14 +89,40 @@ export const deleteStudent = async (studentId: string): Promise<void> => {
   await api.delete(`/student/${studentId}`);
 };
 
-export const importStudents = async (file: File) => {
+export const importStudents = async (
+  file: File,
+  grade?: number,
+  classLetter?: string,
+) => {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post<{
     created: number;
     skipped: number;
     errors: string[];
-  }>("/student/import", formData);
+  }>("/student/import", formData, {
+    params: { grade, class_letter: classLetter },
+  });
+  return data;
+};
+
+export interface ImportClassListsResponse {
+  created_classes: string[];
+  created_students: number;
+  skipped_students: number;
+}
+
+export const importWordClassLists = async (
+  file: File,
+  grade: number,
+): Promise<ImportClassListsResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post<ImportClassListsResponse>(
+    "/student/import-class-lists",
+    formData,
+    { params: { grade } },
+  );
   return data;
 };
 
@@ -104,6 +143,15 @@ export const getStudentById = async (
 ): Promise<StudentResponce> => {
   const { data } = await api.get(`/student/${studentId}`);
 
+  return data;
+};
+
+export const getStudentClassTeacher = async (
+  studentId: string,
+): Promise<HomeroomTeacher | null> => {
+  const { data } = await api.get<HomeroomTeacher | null>(
+    `/student/${studentId}/class-teacher`,
+  );
   return data;
 };
 
@@ -169,14 +217,5 @@ export const addBehavior = async (
 
 export const getBehaviorHistory = async (studentId: string) => {
   const { data } = await api.get(`/behavior/${studentId}`);
-  return data;
-};
-
-export const sendPendingDigests = async () => {
-  const { data } = await api.post<{
-    queued: number;
-    sent_students: number;
-    sent_records: number;
-  }>("/behavior/digests/send");
   return data;
 };

@@ -21,7 +21,7 @@ interface LocationState {
   from?: {
     pathname?: string;
   };
-  email?: string;
+  login?: string;
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -51,7 +51,7 @@ const AuthPage = ({ mode }: AuthPageProps) => {
     first_name: "",
     last_name: "",
     middle_name: "",
-    email: locationState?.email || "",
+    login: locationState?.login || "",
     password: "",
     school_id: "",
   });
@@ -100,7 +100,7 @@ const AuthPage = ({ mode }: AuthPageProps) => {
     try {
       if (isLogin) {
         const data = await loginUser({
-          email: form.email,
+          login: form.login,
           password: form.password,
         });
 
@@ -117,7 +117,7 @@ const AuthPage = ({ mode }: AuthPageProps) => {
       await registerUser(form);
       navigate("/login", {
         replace: true,
-        state: { email: form.email },
+        state: { login: form.login },
       });
     } catch (err) {
       setError(getErrorMessage(err));
@@ -228,15 +228,16 @@ const AuthPage = ({ mode }: AuthPageProps) => {
                   : "grid gap-3"
               }
             >
-              <label className="sr-only" htmlFor="email">
-                Email
+              <label className="sr-only" htmlFor="login">
+                Логин
               </label>
               <input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(event) => updateField("email", event.target.value)}
-                placeholder="Адрес электронной почты"
+                id="login"
+                type="text"
+                autoComplete="username"
+                value={form.login}
+                onChange={(event) => updateField("login", event.target.value)}
+                placeholder="Логин"
                 className="auth-field"
                 required
               />

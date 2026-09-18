@@ -32,7 +32,6 @@ export interface DashboardResponse {
   total_30_days: number;
   top_classes: Array<{ class_name: string; total: number }>;
   top_reasons: Array<{ reason: string; total: number }>;
-  severity: Record<"green" | "yellow" | "red", number>;
 }
 
 export interface PlatformSchoolStats {
@@ -46,7 +45,6 @@ export interface PlatformSchoolStats {
   records_total: number;
   records_7_days: number;
   records_30_days: number;
-  severity: Record<"green" | "yellow" | "red", number>;
 }
 
 export interface PlatformDashboardResponse {
@@ -56,7 +54,6 @@ export interface PlatformDashboardResponse {
   total_records: number;
   total_7_days: number;
   total_30_days: number;
-  severity: Record<"green" | "yellow" | "red", number>;
   top_reasons: Array<{ reason: string; total: number }>;
   schools: PlatformSchoolStats[];
 }
@@ -74,7 +71,6 @@ export interface PlatformSchoolDashboardResponse {
   records_total: number;
   total_7_days: number;
   total_30_days: number;
-  severity: Record<"green" | "yellow" | "red", number>;
   top_classes: Array<{ class_name: string; total: number }>;
   top_reasons: Array<{ reason: string; total: number }>;
 }
